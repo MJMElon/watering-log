@@ -9,7 +9,7 @@ create table public.watering_logs (
   start_photo_url text null,
   end_photo_url text null,
   issue_reason text null,
-  constraint watering_logs_pkey primary key (id)
+  constraint watering_logs_pkey primary key (id),
 
   -- ADD THIS LINE: This prevents the same plot from having the same start time twice
   constraint unique_watering_session unique (plot_name, start_time)
