@@ -7,8 +7,8 @@ if (!currentUser) {
 }
 
 // 2. CONFIGURATION
-const supabaseUrl = 'https://kmcjfqetnmnuoggofakz.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttY2pmcWV0bm1udW9nZ29mYWt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDQzMTgsImV4cCI6MjA4OTE4MDMxOH0.p-t21iaY91hGzekxJos4ClKAwhbQ3uJcMCo-g-PrH14';
+const supabaseUrl = 'https://grhzloniogyqzwyjatze.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyaHpsb25pb2d5cXp3eWphdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDAyODMsImV4cCI6MjA5MTY3NjI4M30.A6_fhzaOHVAForH7Ps7fyCCdHPsjDyEQj8GJyqLwhA0';
 const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
 let activeTimers = {};
