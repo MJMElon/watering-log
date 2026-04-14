@@ -199,7 +199,7 @@ function compressImage(file, callback) {
 function triggerStartCamera() {
     const plot = document.getElementById('plotSelect').value;
     if (!plot) return alert("Please select a Plot No!");
-    if (activeTimers[plot]) return alert("Plot is already active!");
+    if (activeTimers[plot]) return alert("Plot sedang disiram!");
     currentPlotPending = plot;
     cameraInput.click();
 }
