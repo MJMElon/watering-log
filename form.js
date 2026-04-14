@@ -151,7 +151,7 @@ function showHistoryTab(loc) {
 function syncPlotOptions(locId, plotId) {
     const locValue = document.getElementById(locId).value;
     const plotDropdown = document.getElementById(plotId);
-    plotDropdown.innerHTML = '<option value="">-- Select Plot --</option>';
+    plotDropdown.innerHTML = '<option value="">-- Pilih Plot --</option>';
     if (locValue && plotData[locValue]) {
         plotData[locValue].forEach(plot => {
             let option = document.createElement("option");
@@ -198,7 +198,7 @@ function compressImage(file, callback) {
 // --- WATERING ACTIONS ---
 function triggerStartCamera() {
     const plot = document.getElementById('plotSelect').value;
-    if (!plot) return alert("Please select a Plot No!");
+    if (!plot) return alert("Sila pilih plot!");
     if (activeTimers[plot]) return alert("Plot sedang disiram!");
     currentPlotPending = plot;
     cameraInput.click();
