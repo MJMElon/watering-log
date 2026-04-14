@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+    <title>Watering Log</title>
+    <link rel="stylesheet" href="form.css">
+    <link rel="apple-touch-icon" href="icon-512.png">
+    <link rel="icon" type="image/png" href="icon-512.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Watering App">
+</head>
+
+<body>
+<div id="offlineSyncStatus" style="position:fixed; top:0; left:0; width:100%; padding:8px; text-align:center; font-size:14px; z-index:10000; display:none; font-weight:bold;">
+    <span id="statusText"></span>
+</div>
+
+
+
+<div style="max-width: 600px; margin: 0 auto; padding: 10px; box-sizing: border-box;">
+
+    <div class="tab-container" style="display: flex; width: 100%; margin-bottom: 0; box-sizing: border-box;">
+        <button id="btnWater" onclick="showTab('wateringSection')" style="flex: 1; padding: 15px; border: 1px solid #28a745; background: #28a745; color: white; border-radius: 12px 0 0 0; font-weight: bold; cursor: pointer; transition: 0.3s; border-bottom: none;">🌿 Siram</button>
+        <button id="btnIssue" onclick="showTab('issueSection')" style="flex: 1; padding: 15px; border: 1px solid #ddd; background: #ddd; color: #555; border-radius: 0 12px 0 0; font-weight: bold; cursor: pointer; transition: 0.3s; border-left: none; border-bottom: none;">❌ Tidak Dapat Siram</button>
+    </div>
+
+    <div class="card" style="margin: 0; width: 100%; border-radius: 0 0 12px 12px; border: 1px solid #ddd; box-sizing: border-box; background: white; overflow: hidden; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+        
+        <div id="tabStage" style="display: flex; width: 200%; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); transform: translateX(0);">
+            
+            <div id="wateringSection" style="width: 50%; padding: 20px; box-sizing: border-box; flex-shrink: 0;">
+                <div class="selection-group" style="padding: 15px; border: 1px solid #e0eee0; border-radius: 8px; background: #f9fff9;">
+                    <h1 style="margin: 0 0 15px 0; font-size: 22px; color: #333;">🌿 Plot Watering Log</h1>
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">Lokasi:</label>
+                    <select id="locationSelect" onchange="syncPlotOptions('locationSelect', 'plotSelect')" style="width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; background: white;">
+                        <option value="">-- Pilih Lokasi --</option>  
+                        <option value="BNN">BNN</option>
+                        <option value="UNN1">UNN1</option>
+                        <option value="UNN2">UNN2</option>
+                    </select>
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">Plot No:</label>
+                    <select id="plotSelect" style="width: 100%; padding: 12px; margin-bottom: 20px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; background: white;">
+                        <option value="">-- Sila Pilih Lokasi Dulu --</option>
+                    </select>
+                    <button class="start-btn" onclick="triggerStartCamera()" style="width:100%; background:#28a745; color:white; padding: 16px; border:none; border-radius:8px; font-weight:bold; font-size:18px;">📸 START WATERING</button>
+                </div>
+                <input type="file" id="cameraInput" accept="image/*" capture="camera" style="display:none;">
+            </div>
+
+            <div id="issueSection" style="width: 50%; padding: 20px; box-sizing: border-box; flex-shrink: 0;">
+                <div class="issue-report-box" style="padding: 15px; border: 1px solid #f5e0e0; border-radius: 8px; background: #fff9f9;">
+                    <h1 style="margin: 0 0 15px 0; font-size: 22px; color: #d9534f;">❌ Tidak Dapat Siram</h1>
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">Lokasi:</label>
+                    <select id="issueLocationSelect" onchange="syncPlotOptions('issueLocationSelect', 'issuePlotSelect')" style="width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; background: white;">
+                        <option value="">-- Pilih Lokasi --</option>  
+                        <option value="BNN">BNN</option>
+                        <option value="UNN1">UNN1</option>
+                        <option value="UNN2">UNN2</option>
+                    </select>
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">Plot No:</label>
+                    <select id="issuePlotSelect" style="width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; background: white;">
+                        <option value="">-- Sila Pilih Lokasi Dulu --</option>
+                    </select>
+                    <label style="display: block; font-weight: bold; margin-bottom: 5px;">Sebab:</label>
+                    <select id="reasonDropdown" style="width: 100%; padding: 12px; margin-bottom: 20px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; background: white;">
+                        <option value="">-- Pilih Sebab --</option>
+                        <option value="Hujan">🌧️ Hujan</option>
+                        <option value="Rosak">⚙️ Rosak</option>
+                        <option value="Spray">🐜 Spray</option>
+                        <option value="Banjir">🌊 Banjir</option>
+                        <option value="Kosong">🚫 Kosong</option>
+                        <option value="Lain-lain">❓ Lain-lain</option>
+                    </select>
+                    <button onclick="reportIssue()" style="width: 100%; background: #d9534f; color: white; padding: 16px; border: none; border-radius: 8px; font-weight:bold; font-size:18px;">LAPOR</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="activeSessionsArea" style="margin-top: 20px; min-height: 20px; width: 100%;"></div>
+
+    <div style="margin-top: 60px; margin-bottom: 20px; border-top: 2px solid #eee; position: relative; width: 100%;">
+        <span style="position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: #f4f7f6; padding: 0 20px; color: #aaa; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px;">
+            REKOD SEBELUM INI
+        </span>
+    </div>
+
+    <div style="display: flex; gap: 5px; margin-bottom: 10px; padding: 0 5px;">
+        <button id="tabBtnBNN" onclick="showHistoryTab('BNN')" style="flex:1; padding: 10px; border: 1px solid #ddd; border-radius: 8px 8px 0 0; background: #28a745; color: white; font-weight: bold; font-size: 12px; cursor: pointer; transition: 0.3s;">BNN</button>
+        <button id="tabBtnUNN1" onclick="showHistoryTab('UNN1')" style="flex:1; padding: 10px; border: 1px solid #ddd; border-radius: 8px 8px 0 0; background: #eee; color: #666; font-weight: bold; font-size: 12px; cursor: pointer; transition: 0.3s;">UNN1</button>
+        <button id="tabBtnUNN2" onclick="showHistoryTab('UNN2')" style="flex:1; padding: 10px; border: 1px solid #ddd; border-radius: 8px 8px 0 0; background: #eee; color: #666; font-weight: bold; font-size: 12px; cursor: pointer; transition: 0.3s;">UNN2</button>
+    </div>
+
+    <div style="width: 100%; overflow: hidden; background: white; border: 1px solid #e0e0e0; border-radius: 0 0 14px 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.04);">
+            <div id="historyStage" style="display: flex; width: 300%; transition: transform 0.4s;">
+                <div style="width: 33.33%; flex-shrink: 0;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tbody id="logBodyBNN"></tbody> </table>
+                </div>
+
+                <div style="width: 33.33%; flex-shrink: 0;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tbody id="logBodyUNN1"></tbody> </table>
+                </div>
+
+                <div style="width: 33.33%; flex-shrink: 0;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tbody id="logBodyUNN2"></tbody> </table>
+                </div>
+            </div>
+    </div>
+    
+    <div style="padding: 15px; text-align: right; background: #fdfdfd; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 14px 14px;">
+        <span style="color: #666; font-weight: bold;">Jumlah Masa (10 Terkini): </span>
+        <span id="grandTotal" style="color: #28a745; font-weight: bold; font-size: 16px;">0.00 min</span>
+    </div>
+</div>
+
+
+
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="form.js"></script>
+
+
+
+
+<div style="margin-top: 50px; padding: 20px; border-top: 1px solid #ddd; text-align: center;">
+    <div style="display: flex; gap: 10px; justify-content: center;">
+        <a href="records.html" style="text-decoration: none; background: #6c757d; color: white; padding: 12px 20px; border-radius: 8px; font-weight: bold;">📋 Rekod</a>
+        <a href="dashboard.html" style="text-decoration: none; background: #007bff; color: white; padding: 12px 20px; border-radius: 8px; font-weight: bold;">📊 Dashboard</a>
+    </div>
+</div>
+
+<div style="text-align: center; margin-top: 40px; padding-bottom: 20px;">
+    <hr style="border: 0; border-top: 1px solid #eee; width: 80%; margin: 20px auto;">
+    <button onclick="logout()" style="background: none; border: 1px solid #ccc; color: #070000; padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;">
+        Log Keluar
+    </button>
+</div>
+</body>
+</html>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+    <title>Sejarah Siraman Farm</title>
+    <link rel="apple-touch-icon" href="icon-512.png">
+    <link rel="icon" type="image/png" href="icon-512.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Watering App">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        :root {
+            --primary: #28a745;
+            --warning: #ffc107;
+            --danger: #d9534f;
+            --dark: #343a40;
+            --bg: #f8f9fa;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 10px; background: var(--bg); margin: 0; }
+        .container { max-width: 900px; margin: auto; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .btn-nav { text-decoration: none; background: var(--dark); color: white; padding: 8px 15px; border-radius: 6px; font-size: 13px; font-weight: bold; }
+
+        /* Compact Table Styles */
+        .table-wrapper { background: white; border-radius: 10px; overflow-x: auto; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; min-width: 500px; }
+        th { background: #eee; padding: 8px 5px; text-align: left; color: #666; font-size: 10px; text-transform: uppercase; border-bottom: 1px solid #ddd; }
+        td { padding: 6px 5px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+        
+        /* Column Widths */
+        .col-time { width: 75px; }
+        .col-plot { width: 60px; }
+        .col-status { width: auto; }
+        .col-dur { width: 40px; text-align: center; }
+        .col-pic { width: 90px; text-align: center; }
+
+        /* Status Tags */
+        .tag { font-size: 9px; font-weight: bold; padding: 2px 5px; border-radius: 3px; display: inline-block; white-space: nowrap; }
+        .tag-success { background: #d4edda; color: #155724; }
+        .tag-warning { background: #fff3cd; color: #856404; }
+        .tag-danger { background: #f8d7da; color: #721c24; }
+
+        /* Photo Styles */
+        .photo-container { display: flex; gap: 3px; justify-content: center; }
+        .thumb-mini { width: 38px; height: 38px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; cursor: pointer; transition: 0.2s; }
+        .thumb-mini:hover { border-color: var(--dark); transform: scale(1.1); }
+
+        /* Pagination */
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 15px; padding: 10px; font-size: 13px; }
+        .btn-page { padding: 6px 15px; border-radius: 5px; border: 1px solid #ccc; background: white; cursor: pointer; }
+        .btn-page:disabled { opacity: 0.3; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2 style="margin:0; font-size: 18px;">📋 Sejarah Rekod</h2>
+        <a href="form.html" class="btn-nav">🏠 Home</a>
+    </div>
+
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th class="col-time">Masa</th>
+                    <th class="col-plot">Plot</th>
+                    <th class="col-status">Status</th>
+                    <th class="col-dur">Min</th>
+                    <th class="col-pic">Mula / Tamat</th>
+                </tr>
+            </thead>
+            <tbody id="recordBody">
+                <tr><td colspan="5" style="text-align:center; padding: 40px; color:#999;">Memuatkan data...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination">
+        <button id="prevBtn" class="btn-page" onclick="changePage(-1)">⬅️</button>
+        <span id="pageInfo">Page 1</span>
+        <button id="nextBtn" class="btn-page" onclick="changePage(1)">➡️</button>
+    </div>
+</div>
+
+<script>
+    // Check if user is already logged in
+    const currentUser = localStorage.getItem('loggedInUser');
+    if (!currentUser) {
+        window.location.href = "index.html"; 
+    }
+
+    // --- Configuration ---
+    const supabaseUrl = 'https://kmcjfqetnmnuoggofakz.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttY2pmcWV0bm1udW9nZ29mYWt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDQzMTgsImV4cCI6MjA4OTE4MDMxOH0.p-t21iaY91hGzekxJos4ClKAwhbQ3uJcMCo-g-PrH14';
+    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    let allRecords = [];
+    let currentPage = 1;
+    const recordsPerPage = 30;
+
+    async function fetchAll() {
+        const { data, error } = await _supabase
+            .from('watering_logs')
+            .select('*')
+            // CHANGE 1: Order by end_time so latest finished work is first
+            .order('end_time', { ascending: false });
+
+        if (error) {
+            console.error("Fetch error:", error);
+            document.getElementById('recordBody').innerHTML = '<tr><td colspan="5" style="text-align:center; color:red;">Gagal memuatkan data.</td></tr>';
+            return;
+        }
+
+        allRecords = data;
+        renderPage();
+    }
+
+    function renderPage() {
+        const tbody = document.getElementById('recordBody');
+        tbody.innerHTML = '';
+
+        const start = (currentPage - 1) * recordsPerPage;
+        const end = start + recordsPerPage;
+        const pageItems = allRecords.slice(start, end);
+
+        if (pageItems.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">Tiada rekod dijumpai.</td></tr>';
+            return;
+        }
+
+        pageItems.forEach(row => {
+            // CHANGE 2: Use end_time for the row display instead of start_time
+            // If end_time is null (for issues), fallback to start_time
+            const displayTime = row.end_time ? row.end_time : row.start_time;
+            const dt = new Date(displayTime);
+            
+            const dateStr = dt.toLocaleDateString('ms-MY', { day: '2-digit', month: '2-digit' });
+            const timeStr = dt.toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+            const isIssue = row.issue_reason !== null;
+            const isDeep = row.duration >= 50;
+            const isPartial = !isIssue && row.duration < 50;
+
+            let statusHTML = '';
+            let rowStyle = '';
+
+            if (isIssue) {
+                statusHTML = `<span class="tag tag-danger">${row.issue_reason.toUpperCase()}</span>`;
+                rowStyle = 'background-color: #fff8f8;';
+            } else if (isPartial) {
+                statusHTML = `<span class="tag tag-warning">SEPARUH</span>`;
+                rowStyle = 'background-color: #fffdf5;';
+            } else {
+                statusHTML = `<span class="tag tag-success">BERJAYA</span>`;
+            }
+
+            const tr = document.createElement('tr');
+            tr.style = rowStyle;
+            tr.innerHTML = `
+                <td class="col-time" style="font-size: 0.9em;">${dateStr}<br><strong style="color:#28a745;">${timeStr}</strong></td>
+                <td class="col-plot"><strong>${row.plot_name}</strong></td>
+                <td class="col-status">${statusHTML}</td>
+                <td class="col-dur"><strong>${row.duration || 0}</strong><br><small style="color:#999;">min</small></td>
+                <td class="col-pic">
+                    <div class="photo-container" style="display:flex; gap:4px;">
+                        ${row.start_photo_url ? `<img src="${row.start_photo_url}" class="thumb-mini" style="width:40px; height:40px; object-fit:cover; border-radius:4px;" title="Gambar Mula" onclick="window.open(this.src)">` : '<span style="color:#ccc">❌</span>'}
+                        ${row.end_photo_url ? `<img src="${row.end_photo_url}" class="thumb-mini" style="width:40px; height:40px; object-fit:cover; border-radius:4px;" title="Gambar Tamat" onclick="window.open(this.src)">` : '<span style="color:#ccc">❌</span>'}
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        const totalPages = Math.ceil(allRecords.length / recordsPerPage);
+        document.getElementById('pageInfo').innerText = `Page ${currentPage} / ${totalPages}`;
+        document.getElementById('prevBtn').disabled = (currentPage === 1);
+        document.getElementById('nextBtn').disabled = (currentPage >= totalPages);
+    }
+
+    function changePage(dir) {
+        currentPage += dir;
+        renderPage();
+        window.scrollTo(0, 0);
+    }
+
+    window.onload = fetchAll;
+</script>
+
+<div style="text-align: center; margin-top: 40px; padding-bottom: 20px;">
+    <hr style="border: 0; border-top: 1px solid #eee; width: 80%; margin: 20px auto;">
+    <button onclick="logout()" style="background: none; border: 1px solid #ccc; color: #070000; padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;">
+        Log Keluar
+    </button>
+</div>
+
+</body>
+</html>

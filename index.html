@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+    <title>Plant Watering Tracker - Login</title>
+
+    <link rel="apple-touch-icon" href="icon-512.png">
+    <link rel="icon" type="image/png" href="icon-512.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Watering App">
+
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f7f4; /* Light leafy green */
+        }
+        .login-container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-sizing: border-box; /* Prevents input from overflowing */
+            font-size: 16px; /* Prevents iOS from zooming in on focus */
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #2e7d32;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        button:active {
+            background-color: #1b5e20;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="login-container">
+    <h2>🌱 Siram Go! 🚿</h2>
+    <p>Sila Log Masuk & Mula Menyiram</p>
+    
+    <form id="loginForm">
+        <input type="email" id="email" placeholder="Emel" required>
+        <input type="password" id="password" placeholder="Kata Laluan" required>
+        <button type="submit">Log Masuk</button>
+    </form>
+    
+    <p style="margin-top: 15px; font-size: 14px;">
+        Pengguna Baru Sila Daftar Di Sini: <a href="signup.html">Daftar</a>
+    </p>
+</div>
+<script>
+
+    // Check if user is already logged in
+    const savedUser = localStorage.getItem('loggedInUser');
+    if (savedUser) {
+        window.location.href = "form.html"; 
+    }
+
+    // 1. Connection Details
+    const supabaseUrl = 'https://kmcjfqetnmnuoggofakz.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttY2pmcWV0bm1udW9nZ29mYWt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDQzMTgsImV4cCI6MjA4OTE4MDMxOH0.p-t21iaY91hGzekxJos4ClKAwhbQ3uJcMCo-g-PrH14';
+
+    // 2. Initialize with a unique name to avoid naming conflicts
+    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    const loginForm = document.getElementById('loginForm');
+
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+
+        // 3. Use _supabase to sign in
+        const { data, error } = await _supabase.auth.signInWithPassword({
+            email: email,
+            password: password,
+        });
+
+        if (error) {
+            alert("Login failed: " + error.message);
+        } else {
+            // 4. Store the email so form.html can display it in the logs
+            localStorage.setItem('loggedInUser', data.user.email);
+            window.location.href = "form.html";
+        }
+    });
+</script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+    <title>Plant Tracker - Sign Up</title>
+    <link rel="apple-touch-icon" href="icon-512.png">
+    <link rel="icon" type="image/png" href="icon-512.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Watering App">
+
+    <style>
+        /* Reusing the same styles for consistency */
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f0f7f4; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        button { width: 100%; padding: 12px; background-color: #2e7d32; color: white; border: none; border-radius: 8px; font-size: 18px; cursor: pointer; margin-top: 10px; }
+        .link-text { margin-top: 15px; font-size: 14px; color: #666; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="container">
+    <h2>🌱 Join the Garden</h2>
+    <p>Create an account to start tracking</p>
+    
+    <form id="signupForm">
+        <input type="text" placeholder="Nama" required> <input type="email" id="email" placeholder="Emel" required> 
+        <input type="password" id="password" placeholder="Kata Laluan Baru" required>
+        <input type="password" id="confirmPass" placeholder="Sahkan Kata Laluan" required>
+        <button type="submit">Buka Akaun</button>
+    </form>
+    
+    <p class="link-text">
+        Sudah Ada Akaun? <a href="index.html">Log Masuk</a>
+    </p>
+</div>
+
+<script>
+    // 1. Connection Details (Your key looks correct now!)
+    const supabaseUrl = 'https://kmcjfqetnmnuoggofakz.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttY2pmcWV0bm1udW9nZ29mYWt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDQzMTgsImV4cCI6MjA4OTE4MDMxOH0.p-t21iaY91hGzekxJos4ClKAwhbQ3uJcMCo-g-PrH14';
+
+    // 2. Initialize the client correctly
+    // We use 'supabase.createClient' directly from the library
+    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    const signupForm = document.getElementById('signupForm');
+
+    signupForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+
+        // 3. Use '_supabase' here to perform the signup
+        const { data, error } = await _supabase.auth.signUp({
+            email: email,
+            password: password,
+        });
+
+        if (error) {
+            alert("Error: " + error.message);
+            console.log(error);
+        } else {
+            // Check if the user was created but needs email confirmation
+            if (data.user && data.user.identities && data.user.identities.length === 0) {
+                alert("This email is already registered!");
+            } else {
+                alert("Success! Check your email for a confirmation link.");
+                window.location.href = "index.html";
+            }
+        }
+    });
+</script>
+
+</body>
+</html>
