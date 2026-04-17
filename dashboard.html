@@ -202,18 +202,19 @@
                 successCount++;
             }
 
-            // CHANGE 3: Use end_time for the row display
             const displayDateObj = row.end_time ? new Date(row.end_time) : new Date(row.start_time);
-            const formattedDate = displayDateObj.toLocaleDateString('ms-MY'); 
-            const formattedTime = displayDateObj.toLocaleTimeString('ms-MY', { 
-                hour12: false, 
-                hour: '2-digit', 
-                minute: '2-digit' 
-            });
+            const formattedDate = displayDateObj.toLocaleDateString('ms-MY');
+            const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
+            const startTimeStr = row.start_time ? fmtTime(row.start_time) : '-';
+            const endTimeStr = row.end_time ? fmtTime(row.end_time) : '-';
 
             tbody.innerHTML += `
                 <tr>
-                    <td style="font-size: 13px;">${formattedDate} <br> <strong style="color:#28a745;">${formattedTime}</strong></td>
+                    <td style="font-size: 13px;">
+                        ${formattedDate}<br>
+                        <small style="color:#999;">Mula:</small> <strong style="color:#28a745;">${startTimeStr}</strong><br>
+                        <small style="color:#999;">Tamat:</small> <strong style="color:#28a745;">${endTimeStr}</strong>
+                    </td>
                     <td><strong>${row.plot_name}</strong></td>
                     <td><span class="badge ${badgeClass}" style="font-size:10px; padding: 4px 8px;">${statusText}</span></td>
                     <td style="font-weight:bold;">${row.duration || 0} <small style="color:#999; font-weight:normal;">min</small></td>
@@ -237,17 +238,19 @@
     }
 
     function downloadCSV() {
-        let csv = "Tarikh,Masa,Plot,Status,Durasi,User\n";
+        let csv = "Tarikh,Mula,Tamat,Plot,Status,Durasi,User\n";
         document.querySelectorAll("#dataTable tr").forEach(row => {
             const cells = Array.from(row.querySelectorAll("td"));
             if(cells.length > 0) {
-                const datePart = cells[0].innerText.split('\n')[0].trim();
-                const timePart = cells[0].innerText.split('\n')[1].trim();
+                const lines = cells[0].innerText.split('\n').map(s => s.trim()).filter(Boolean);
+                const datePart = lines[0] || '';
+                const mulaPart = (lines[1] || '').replace(/^Mula:\s*/i, '').trim();
+                const tamatPart = (lines[2] || '').replace(/^Tamat:\s*/i, '').trim();
                 const plotPart = cells[1].innerText.replace(/,/g, "");
                 const statusPart = cells[2].innerText.replace(/,/g, "");
                 const durPart = cells[3].innerText.replace(/min/g, "").trim();
                 const userPart = cells[4].innerText.replace(/,/g, "");
-                csv += `${datePart},${timePart},${plotPart},${statusPart},${durPart},${userPart}\n`;
+                csv += `${datePart},${mulaPart},${tamatPart},${plotPart},${statusPart},${durPart},${userPart}\n`;
             }
         });
         const blob = new Blob([csv], { type: 'text/csv' });
@@ -258,6 +261,15 @@
     }
 
     window.onload = loadData;
+
+    function logout() {
+        const queue = JSON.parse(localStorage.getItem('pending_sync_queue') || "[]");
+        if (queue.length > 0) {
+            if (!confirm("You have " + queue.length + " records not uploaded. Logout anyway?")) return;
+        }
+        localStorage.removeItem('loggedInUser');
+        window.location.href = "index.html";
+    }
 </script>
 
 <div style="text-align: center; margin-top: 40px; padding-bottom: 20px;">

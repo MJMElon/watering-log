@@ -35,7 +35,7 @@
         td { padding: 6px 5px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
         
         /* Column Widths */
-        .col-time { width: 75px; }
+        .col-time { width: 95px; }
         .col-plot { width: 60px; }
         .col-status { width: auto; }
         .col-dur { width: 40px; text-align: center; }
@@ -137,13 +137,13 @@
         }
 
         pageItems.forEach(row => {
-            // CHANGE 2: Use end_time for the row display instead of start_time
-            // If end_time is null (for issues), fallback to start_time
             const displayTime = row.end_time ? row.end_time : row.start_time;
             const dt = new Date(displayTime);
-            
             const dateStr = dt.toLocaleDateString('ms-MY', { day: '2-digit', month: '2-digit' });
-            const timeStr = dt.toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+            const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
+            const startTimeStr = row.start_time ? fmtTime(row.start_time) : '-';
+            const endTimeStr = row.end_time ? fmtTime(row.end_time) : '-';
 
             const isIssue = row.issue_reason !== null;
             const isDeep = row.duration >= 50;
@@ -165,7 +165,11 @@
             const tr = document.createElement('tr');
             tr.style = rowStyle;
             tr.innerHTML = `
-                <td class="col-time" style="font-size: 0.9em;">${dateStr}<br><strong style="color:#28a745;">${timeStr}</strong></td>
+                <td class="col-time" style="font-size: 0.9em;">
+                    ${dateStr}<br>
+                    <small style="color:#999;">Mula:</small> <strong style="color:#28a745;">${startTimeStr}</strong><br>
+                    <small style="color:#999;">Tamat:</small> <strong style="color:#28a745;">${endTimeStr}</strong>
+                </td>
                 <td class="col-plot"><strong>${row.plot_name}</strong></td>
                 <td class="col-status">${statusHTML}</td>
                 <td class="col-dur"><strong>${row.duration || 0}</strong><br><small style="color:#999;">min</small></td>
@@ -192,6 +196,15 @@
     }
 
     window.onload = fetchAll;
+
+    function logout() {
+        const queue = JSON.parse(localStorage.getItem('pending_sync_queue') || "[]");
+        if (queue.length > 0) {
+            if (!confirm("You have " + queue.length + " records not uploaded. Logout anyway?")) return;
+        }
+        localStorage.removeItem('loggedInUser');
+        window.location.href = "index.html";
+    }
 </script>
 
 <div style="text-align: center; margin-top: 40px; padding-bottom: 20px;">
