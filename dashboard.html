@@ -13,6 +13,7 @@
     <meta name="apple-mobile-web-app-title" content="Watering App">
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="plots.js"></script>
 
     <style>
         :root {
@@ -129,7 +130,6 @@
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyaHpsb25pb2d5cXp3eWphdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDAyODMsImV4cCI6MjA5MTY3NjI4M30.A6_fhzaOHVAForH7Ps7fyCCdHPsjDyEQj8GJyqLwhA0';
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-    const plotData = {"BNN": ["B1", "B2", "B3", "B4"], "UNN1": ["U1", "U2", "U3", "U4", "U5"], "UNN2": ["N1", "N2", "N3"]};
     let fullData = [];
 
     function syncPlots() {

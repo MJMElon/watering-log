@@ -14,18 +14,6 @@ const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 let activeTimers = {};
 let currentPlotPending = "";
 const cameraInput = document.getElementById('cameraInput');
-const plotData = {
-"BNN": [
-        "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10", "B11", "B12", "B13", "B14"
-    ],
-    "UNN1": [
-        "U1", "U2", "U3", "U4", "U5", "U6", "U7", "U8", "U9", "U10", "U11", "U12", "U13", "U14", "U15", "U16", "U17", "U18"
-    ],
-    "UNN2": [
-        "N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "N10", "N11", "N12", "N13", "N14", "N15", "N16", "N17", "N18", "N19", "N20"
-    ]
-};
-
 // --- INITIALIZATION ---
 function updateSyncUI(count) {
     const bar = document.getElementById('offlineSyncStatus');
