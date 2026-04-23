@@ -1,3 +1,9 @@
+// --- 1. INITIALIZE DEXIE ---
+const db = new Dexie("SiramGoDB");
+db.version(1).stores({
+    pending_queue: '++id, plot_name, timestamp' // Local warehouse for offline logs
+});
+
 let isSyncing = false;
 
 // 1. SECURITY CHECK
@@ -33,80 +39,27 @@ function updateSyncUI(count) {
     }
 }
 
-// UPDATED: Now calls fetchLatestRecords on load
-window.onload = function() {
+// --- UPDATED ONLOAD (With Migration) ---
+window.onload = async function() {
     const saved = localStorage.getItem('activeWateringSessions');
     if (saved) {
         activeTimers = JSON.parse(saved);
         renderActiveSessions();
     }
-    syncOfflineData(); 
-    fetchLatestRecords(); // Pull latest 10 records from DB
-};
 
-// --- DATABASE FETCH LOGIC ---
-// Updated Fetch Logic - FIXED PREFIXES
-async function fetchLatestRecords() {
-    // Mapping the Tab IDs to the actual first letter of your plots
-    const locMap = { 
-        'BNN': 'B', 
-        'UNN1': 'U', 
-        'UNN2': 'N' 
-    };
-    
-    let totalMinutes = 0;
-
-    for (const [loc, prefix] of Object.entries(locMap)) {
-        const { data, error } = await _supabase
-            .from('watering_logs')
-            .select('*')
-            // Using the prefix (B, U, or N) instead of the full tab name
-            .ilike('plot_name', `${prefix}%`) 
-            .order('end_time', { ascending: false })
-            .limit(10);
-
-        if (error) {
-            console.error("Fetch error for " + loc, error);
-            continue;
+    // MIGRATION: Move old localStorage records to Dexie once
+    let oldQueue = JSON.parse(localStorage.getItem('pending_sync_queue') || "[]");
+    if (oldQueue.length > 0) {
+        console.log("Moving old records to Dexie...");
+        for (let item of oldQueue) {
+            await db.pending_queue.add(item);
         }
-
-        const tbody = document.getElementById(`logBody${loc}`);
-        if (!tbody) continue;
-        
-        tbody.innerHTML = '';
-
-        if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#ccc; font-size:12px;">Tiada rekod.</td></tr>';
-            continue;
-        }
-
-        data.forEach(record => {
-            const dur = parseFloat(record.duration || 0);
-            totalMinutes += dur; 
-            
-            const timeDone = record.end_time ? new Date(record.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-';
-            const imgStyle = "width: 35px; height: 35px; object-fit: cover; border-radius: 4px; margin-right: 2px;";
-
-            const row = document.createElement('tr');
-            row.style.borderBottom = "1px solid #eee";
-            row.innerHTML = `
-                <td style="padding: 10px;"><strong>${record.plot_name}</strong><br><small style="color:#999">${record.user_email ? record.user_email.split('@')[0] : 'User'}</small></td>
-                <td style="padding: 10px;">
-                    ${record.start_photo_url ? `<img src="${record.start_photo_url}" style="${imgStyle}" onclick="window.open(this.src)">` : ''}
-                    ${record.end_photo_url ? `<img src="${record.end_photo_url}" style="${imgStyle}" onclick="window.open(this.src)">` : ''}
-                </td>
-                <td style="padding: 10px; text-align: right;">
-                    <div style="font-weight: bold; color: #28a745;">${dur.toFixed(2)}m</div>
-                    <div style="font-size: 10px; color: #bbb;">${timeDone}</div>
-                </td>
-            `;
-            tbody.appendChild(row);
-        });
+        localStorage.removeItem('pending_sync_queue'); // Clear old storage
     }
 
-    const grandTotal = document.getElementById('grandTotal');
-    if (grandTotal) grandTotal.innerText = totalMinutes.toFixed(2) + ' min';
-}
+    syncOfflineData(); 
+    fetchLatestRecords();
+};
 
 // 4. NEW: Function to handle the sliding animation for History Tabs
 function showHistoryTab(loc) {
@@ -223,6 +176,7 @@ function triggerEndCamera(plot) {
     endCamera.click();
 }
 
+// --- 3. UPDATED FINALIZESTOP (Saves to Dexie) ---
 async function finalizeStop(plot, compressedEndBase64) {
     const endTime = new Date();
     const session = activeTimers[plot];
@@ -239,12 +193,12 @@ async function finalizeStop(plot, compressedEndBase64) {
         duration: durationMins,
         start_photo_data: session.startPhotoData,
         end_photo_data: compressedEndBase64,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        issue_reason: null
     };
 
-    let queue = JSON.parse(localStorage.getItem('pending_sync_queue') || "[]");
-    queue.push(pendingRecord);
-    localStorage.setItem('pending_sync_queue', JSON.stringify(queue));
+    // SAVE TO DEXIE (Unlimited storage)
+    await db.pending_queue.add(pendingRecord);
 
     delete activeTimers[plot];
     localStorage.setItem('activeWateringSessions', JSON.stringify(activeTimers));
@@ -252,13 +206,16 @@ async function finalizeStop(plot, compressedEndBase64) {
     syncOfflineData(); 
 }
 
-// --- ISSUE REPORTING ---
-function reportIssue() {
+// --- UPDATED ISSUE REPORTING FOR DEXIE ---
+async function reportIssue() {
     const plot = document.getElementById('issuePlotSelect').value;
     const reason = document.getElementById('reasonDropdown').value;
-    if (!plot || !reason) return alert("Please select both a Plot and a Reason!");
+    
+    if (!plot || !reason) return alert("Sila pilih Plot dan Sebab!");
 
     const now = new Date().toISOString();
+    
+    // Prepare the record for the Dexie Warehouse
     const issueRecord = {
         user_email: currentUser,
         plot_name: plot,
@@ -266,37 +223,36 @@ function reportIssue() {
         end_time: now,
         duration: 0,
         issue_reason: reason,
-        timestamp: Date.now() 
+        timestamp: Date.now(),
+        // These are null for issues, but the sync engine needs the keys
+        start_photo_data: null,
+        end_photo_data: null
     };
 
-    let queue = JSON.parse(localStorage.getItem('pending_sync_queue') || "[]");
-    queue.push(issueRecord);
-    localStorage.setItem('pending_sync_queue', JSON.stringify(queue));
+    // SAVE TO DEXIE instead of localStorage
+    await db.pending_queue.add(issueRecord);
 
-    alert("Isu disimpan ke memori telefon!");
+    alert("Isu '" + reason + "' disimpan ke memori telefon!");
+    
+    // Trigger sync immediately
     syncOfflineData(); 
 }
 
-// --- SYNC ENGINE ---
 async function syncOfflineData() {
-    if (isSyncing) return; // EXIT if already running
+    if (isSyncing) return;
     
-    let queue = JSON.parse(localStorage.getItem('pending_sync_queue') || "[]");
+    // Read from Dexie Warehouse
+    const queue = await db.pending_queue.toArray();
     if (queue.length === 0) {
         updateSyncUI(0);
         return;
     }
 
-    isSyncing = true; // LOCK the process
+    isSyncing = true;
     updateSyncUI(queue.length);
 
-    for (let i = 0; i < queue.length; i++) {
-        const item = queue[i];
+    for (const item of queue) {
         try {
-            // Check if this specific item was already processed 
-            // (Safety check for very fast loops)
-            if (!item.start_time) continue; 
-
             let payload = {
                 user_email: item.user_email,
                 plot_name: item.plot_name,
@@ -306,6 +262,7 @@ async function syncOfflineData() {
                 issue_reason: item.issue_reason || null
             };
 
+            // Process Photos (Existing Logic)
             if (item.start_photo_data && item.end_photo_data) {
                 const ts = item.timestamp || Date.now();
                 const sPath = `${ts}_${item.plot_name}_S.jpg`;
@@ -321,37 +278,26 @@ async function syncOfflineData() {
                 payload.end_photo_url = _supabase.storage.from('watering-photos').getPublicUrl(ePath).data.publicUrl;
             }
 
-           // ... inside your sync loop ...
-                const { error: dbErr } = await _supabase.from('watering_logs').insert([payload]);
+            // Insert to Supabase Production
+            const { error: dbErr } = await _supabase.from('watering_logs').insert([payload]);
 
-                if (dbErr) {
-                    // 23505 is the "Duplicate" error code
-                    if (dbErr.code === '23505') {
-                        console.warn("Duplicate caught by Supabase. Removing from phone queue.");
-                        // We don't 'throw' here. We let it proceed to delete from localStorage.
-                    } else {
-                        throw dbErr; // A real error (no internet), so stop and try later
-                    }
-                }
+            if (!dbErr || dbErr.code === '23505') {
+                // SUCCESS: Delete from Phone Warehouse
+                await db.pending_queue.delete(item.id);
+            } else {
+                throw dbErr; 
+            }
 
-                // Proceed to delete from localStorage
-                let freshQueue = JSON.parse(localStorage.getItem('pending_sync_queue') || "[]");
-                freshQueue.shift();
-                localStorage.setItem('pending_sync_queue', JSON.stringify(freshQueue));
-            
-            // Sync the loop's local variables
-            queue = freshQueue;
-            i--; 
-            
-            updateSyncUI(queue.length);
+            const remaining = await db.pending_queue.count();
+            updateSyncUI(remaining);
             fetchLatestRecords();
 
         } catch (err) {
-            console.error("Sync failed:", err.message);
-            break; // Stop and wait for the next interval
+            console.error("Sync failed for " + item.plot_name, err.message);
+            break; 
         }
     }
-    isSyncing = false; // UNLOCK when totally finished
+    isSyncing = false;
 }
 
 // --- UI RENDERING ---
