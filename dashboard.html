@@ -14,6 +14,7 @@
     <link rel="manifest" href="manifest.json">
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
     <script src="plots.js"></script>
     <script src="sw-register.js"></script>
 
@@ -122,10 +123,15 @@
 </div>
 
 <script>
+    const db = new Dexie("SiramGoDB");
+    db.version(1).stores({
+        pending_queue: '++id, plot_name, timestamp'
+    });
+
     // Check if user is already logged in
     const currentUser = localStorage.getItem('loggedInUser');
     if (!currentUser) {
-        window.location.href = "index.html"; 
+        window.location.href = "index.html";
     }
     
     const supabaseUrl = 'https://grhzloniogyqzwyjatze.supabase.co';
@@ -264,10 +270,10 @@
 
     window.onload = loadData;
 
-    function logout() {
-        const queue = JSON.parse(localStorage.getItem('pending_sync_queue') || "[]");
-        if (queue.length > 0) {
-            if (!confirm("You have " + queue.length + " records not uploaded. Logout anyway?")) return;
+    async function logout() {
+        const count = await db.pending_queue.count();
+        if (count > 0) {
+            if (!confirm("You have " + count + " records not uploaded. Logout anyway?")) return;
         }
         localStorage.removeItem('loggedInUser');
         window.location.href = "index.html";

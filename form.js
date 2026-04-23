@@ -149,11 +149,15 @@ cameraInput.onchange = function() {
     if (this.files && this.files.length > 0) {
         const plot = currentPlotPending;
         compressImage(this.files[0], (compressedBase64) => {
-            activeTimers[plot] = { 
+            activeTimers[plot] = {
                 startTime: new Date().toISOString(),
-                startPhotoData: compressedBase64 
+                startPhotoData: compressedBase64
             };
-            localStorage.setItem('activeWateringSessions', JSON.stringify(activeTimers));
+            try {
+                localStorage.setItem('activeWateringSessions', JSON.stringify(activeTimers));
+            } catch (e) {
+                alert("Memori telefon penuh! Sila tekan STOP untuk plot yang sedang berjalan sebelum tutup app, supaya rekod tidak hilang.");
+            }
             renderActiveSessions();
         });
         this.value = ''; 
@@ -419,17 +423,18 @@ async function fetchLatestRecords() {
     if (totalEl) totalEl.innerText = totalMinutes.toFixed(2) + ' min';
 }
 
-function logout() {
-    const queue = JSON.parse(localStorage.getItem('pending_sync_queue') || "[]");
-    if (queue.length > 0) {
-        if (!confirm("You have " + queue.length + " records not uploaded. Logout anyway?")) return;
+async function logout() {
+    const count = await db.pending_queue.count();
+    if (count > 0) {
+        if (!confirm("You have " + count + " records not uploaded. Logout anyway?")) return;
     }
     localStorage.removeItem('loggedInUser');
     window.location.href = "index.html";
 }
 
 window.addEventListener('online', syncOfflineData);
-setInterval(() => {
-    let queue = JSON.parse(localStorage.getItem('pending_sync_queue') || "[]");
-    if (queue.length > 0) syncOfflineData();
+setInterval(async () => {
+    if (!navigator.onLine) return;
+    const count = await db.pending_queue.count();
+    if (count > 0) syncOfflineData();
 }, 30000);
