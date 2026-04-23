@@ -35,9 +35,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
-    // Never cache Supabase API/storage calls — always go to network.
-    // The SDK library itself lives on cdn.jsdelivr.net, so this only skips real API traffic.
-    if (url.hostname.endsWith('supabase.co')) return;
+    // Skip Supabase database and auth calls — these must always go to network for fresh data.
+    // Storage URLs (/storage/...) are allowed through so photos cache after first view.
+    if (url.hostname.endsWith('supabase.co') &&
+        (url.pathname.startsWith('/rest/') || url.pathname.startsWith('/auth/'))) return;
 
     // Only handle GETs
     if (event.request.method !== 'GET') return;
