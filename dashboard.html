@@ -69,8 +69,8 @@
 
     <div class="filter-card">
         <div class="filter-grid">
-            <div class="filter-item"><label>Mula:</label><input type="date" id="startDate" onchange="runFilter()"></div>
-            <div class="filter-item"><label>Hingga:</label><input type="date" id="endDate" onchange="runFilter()"></div>
+            <div class="filter-item"><label>Mula:</label><input type="date" id="startDate" onchange="loadData()"></div>
+            <div class="filter-item"><label>Hingga:</label><input type="date" id="endDate" onchange="loadData()"></div>
             <div class="filter-item">
                 <label>Lokasi:</label>
                 <select id="locSelect" onchange="syncPlots()">
@@ -150,9 +150,25 @@
         runFilter();
     }
 
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function getMonthStart() {
+        const d = new Date();
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`;
+    }
+    function getToday() {
+        const d = new Date();
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+
     async function loadData() {
-        // CHANGE 1: Order by end_time for consistency
-        const { data, error } = await _supabase.from('watering_logs').select('*').order('end_time', { ascending: false });
+        const start = document.getElementById('startDate').value;
+        const end = document.getElementById('endDate').value;
+
+        let query = _supabase.from('watering_logs').select('*').order('end_time', { ascending: false });
+        if (start) query = query.gte('end_time', start + 'T00:00:00');
+        if (end) query = query.lte('end_time', end + 'T23:59:59');
+
+        const { data, error } = await query;
         if (error) return console.error(error);
         fullData = data;
         runFilter();
@@ -188,7 +204,8 @@
         let issueTypes = {};
 
         const tbody = document.getElementById('dataTable');
-        tbody.innerHTML = '';
+        const rows = [];
+        const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
 
         data.forEach(row => {
             const isIssue = row.issue_reason !== null;
@@ -212,11 +229,10 @@
 
             const displayDateObj = row.end_time ? new Date(row.end_time) : new Date(row.start_time);
             const formattedDate = displayDateObj.toLocaleDateString('ms-MY');
-            const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
             const startTimeStr = row.start_time ? fmtTime(row.start_time) : '-';
             const endTimeStr = row.end_time ? fmtTime(row.end_time) : '-';
 
-            tbody.innerHTML += `
+            rows.push(`
                 <tr>
                     <td style="font-size: 13px;">
                         ${formattedDate}<br>
@@ -227,22 +243,25 @@
                     <td><span class="badge ${badgeClass}" style="font-size:10px; padding: 4px 8px;">${statusText}</span></td>
                     <td style="font-weight:bold;">${row.duration || 0} <small style="color:#999; font-weight:normal;">min</small></td>
                     <td style="color:#999; font-size:11px; vertical-align:middle;">${row.user_email ? row.user_email.split('@')[0] : '-'}</td>
-                </tr>`;
+                </tr>`);
         });
+
+        tbody.innerHTML = rows.join('');
 
         document.getElementById('statSuccess').innerText = successCount;
         document.getElementById('statPartial').innerText = partialCount;
         document.getElementById('statTotalIssue').innerText = totalIssueCount;
 
         const breakdownArea = document.getElementById('issueBreakdownArea');
-        breakdownArea.innerHTML = totalIssueCount === 0 ? '<p style="color:#999; font-size:13px; text-align:center; padding:10px;">Tiada isu dikesan.</p>' : '';
-        Object.keys(issueTypes).forEach(type => {
-            breakdownArea.innerHTML += `
+        if (totalIssueCount === 0) {
+            breakdownArea.innerHTML = '<p style="color:#999; font-size:13px; text-align:center; padding:10px;">Tiada isu dikesan.</p>';
+        } else {
+            breakdownArea.innerHTML = Object.keys(issueTypes).map(type => `
                 <div class="breakdown-item" style="border:1px solid #fee; background:#fffafa; border-radius:8px; padding:10px; text-align:center;">
                     <div style="font-size:11px; color:#d9534f; font-weight:bold; text-transform:uppercase;">${type}</div>
                     <div style="font-size:20px; font-weight:bold; color:#333;">${issueTypes[type]}</div>
-                </div>`;
-        });
+                </div>`).join('');
+        }
     }
 
     function downloadCSV() {
@@ -268,7 +287,11 @@
         a.click();
     }
 
-    window.onload = loadData;
+    window.onload = () => {
+        document.getElementById('startDate').value = getMonthStart();
+        document.getElementById('endDate').value = getToday();
+        loadData();
+    };
 
     async function logout() {
         const count = await db.pending_queue.count();
