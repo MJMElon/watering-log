@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+    <title>Payroll Report</title>
+    <link rel="apple-touch-icon" href="icon-512.png">
+    <link rel="icon" type="image/png" href="icon-512.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Siram Go!">
+    <link rel="manifest" href="manifest.json">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="sw-register.js"></script>
+
+    <style>
+        :root {
+            --dark: #343a40;
+            --bg: #f4f7f6;
+        }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: var(--bg); color: #333; margin: 0; }
+        .container { max-width: 1100px; margin: auto; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .nav-btn { text-decoration: none; color: white; background: var(--dark); padding: 10px 20px; border-radius: 8px; font-weight: bold; }
+        .placeholder-card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center; }
+        #loadingState { text-align: center; padding: 60px; color: #666; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div id="loadingState">Mengesahkan akses...</div>
+
+<div id="content" class="container" style="display:none;">
+    <div class="header">
+        <h1>💰 Payroll Report</h1>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <span onclick="showUserBadgePopup(this)" style="color:#666; font-size:13px; cursor:pointer; user-select:none;" title="Tap to show full email">👤 <span id="userBadge"></span></span>
+            <a href="form.html" class="nav-btn">🏠 Home</a>
+        </div>
+    </div>
+
+    <div class="placeholder-card">
+        <h2 style="margin:0 0 10px 0;">Coming Soon</h2>
+        <p style="color:#666; margin:0;">Laporan gaji akan dipaparkan di sini.</p>
+    </div>
+
+    <div style="text-align: center; margin-top: 40px; padding-bottom: 20px;">
+        <hr style="border: 0; border-top: 1px solid #eee; width: 80%; margin: 20px auto;">
+        <button onclick="logout()" style="background: none; border: 1px solid #ccc; color: #070000; padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;">Log Keluar</button>
+    </div>
+</div>
+
+<script>
+    const currentUser = localStorage.getItem('loggedInUser');
+    if (!currentUser) {
+        window.location.href = "index.html";
+    }
+
+    const supabaseUrl = 'https://grhzloniogyqzwyjatze.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyaHpsb25pb2d5cXp3eWphdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDAyODMsImV4cCI6MjA5MTY3NjI4M30.A6_fhzaOHVAForH7Ps7fyCCdHPsjDyEQj8GJyqLwhA0';
+    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    let userBadgePopupTimer = null;
+    function showUserBadgePopup(anchor) {
+        if (!currentUser) return;
+        closeUserBadgePopup();
+        const popup = document.createElement('div');
+        popup.id = 'userBadgePopup';
+        popup.textContent = currentUser;
+        popup.style.cssText = 'position:fixed; background:#333; color:white; padding:6px 10px; border-radius:6px; font-size:13px; white-space:nowrap; z-index:10000; box-shadow:0 2px 8px rgba(0,0,0,0.2);';
+        const rect = anchor.getBoundingClientRect();
+        popup.style.top = (rect.bottom + 5) + 'px';
+        popup.style.left = Math.max(8, Math.min(window.innerWidth - 250, rect.right - 200)) + 'px';
+        document.body.appendChild(popup);
+        userBadgePopupTimer = setTimeout(closeUserBadgePopup, 2500);
+        anchor.addEventListener('mouseleave', closeUserBadgePopup, { once: true });
+    }
+    function closeUserBadgePopup() {
+        const popup = document.getElementById('userBadgePopup');
+        if (popup) popup.remove();
+        if (userBadgePopupTimer) { clearTimeout(userBadgePopupTimer); userBadgePopupTimer = null; }
+    }
+
+    async function verifyAdminAccess() {
+        try {
+            const { data, error } = await _supabase
+                .from('admins')
+                .select('email')
+                .eq('email', currentUser)
+                .maybeSingle();
+
+            if (error || !data) {
+                alert('Halaman ini hanya untuk admin.');
+                window.location.href = 'form.html';
+                return;
+            }
+
+            document.getElementById('loadingState').style.display = 'none';
+            document.getElementById('content').style.display = '';
+            document.getElementById('userBadge').textContent = currentUser.split('@')[0];
+        } catch (e) {
+            alert('Tidak dapat sahkan akses. Sila cuba semula.');
+            window.location.href = 'form.html';
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('loggedInUser');
+        window.location.href = "index.html";
+    }
+
+    window.onload = verifyAdminAccess;
+</script>
+</body>
+</html>

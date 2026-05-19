@@ -26,6 +26,12 @@
 
 <div style="max-width: 600px; margin: 0 auto; padding: 10px; box-sizing: border-box;">
 
+    <div style="text-align: right; font-size: 13px; color: #666; padding: 4px 2px 8px;">
+        <span onclick="showUserBadgePopup(this)" style="cursor:pointer; user-select:none;" title="Tap to show full email">
+            👤 <span id="userBadge"></span>
+        </span>
+    </div>
+
     <div class="tab-container" style="display: flex; width: 100%; margin-bottom: 0; box-sizing: border-box;">
         <button id="btnWater" onclick="showTab('wateringSection')" style="flex: 1; padding: 15px; border: 1px solid #28a745; background: #28a745; color: white; border-radius: 12px 0 0 0; font-weight: bold; cursor: pointer; transition: 0.3s; border-bottom: none;">🌿 Siram</button>
         <button id="btnIssue" onclick="showTab('issueSection')" style="flex: 1; padding: 15px; border: 1px solid #ddd; background: #ddd; color: #555; border-radius: 0 12px 0 0; font-weight: bold; cursor: pointer; transition: 0.3s; border-left: none; border-bottom: none;">❌ Tidak Dapat Siram</button>
@@ -137,6 +143,7 @@
     <div style="display: flex; gap: 10px; justify-content: center;">
         <a href="records.html" style="text-decoration: none; background: #6c757d; color: white; padding: 12px 20px; border-radius: 8px; font-weight: bold;">📋 Rekod</a>
         <a href="dashboard.html" style="text-decoration: none; background: #007bff; color: white; padding: 12px 20px; border-radius: 8px; font-weight: bold;">📊 Dashboard</a>
+        <a id="payrollBtn" href="payroll.html" style="display:none; text-decoration: none; background: #6f42c1; color: white; padding: 12px 20px; border-radius: 8px; font-weight: bold;">💰 Payroll Report</a>
     </div>
 </div>
 

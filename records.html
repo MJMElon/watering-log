@@ -66,7 +66,10 @@
 <div class="container">
     <div class="header">
         <h2 style="margin:0; font-size: 18px;">📋 Sejarah Rekod</h2>
-        <a href="form.html" class="btn-nav">🏠 Home</a>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span onclick="showUserBadgePopup(this)" style="color:#666; font-size:13px; cursor:pointer; user-select:none;" title="Tap to show full email">👤 <span id="userBadge"></span></span>
+            <a href="form.html" class="btn-nav">🏠 Home</a>
+        </div>
     </div>
 
     <div class="table-wrapper">
@@ -203,7 +206,32 @@
         window.scrollTo(0, 0);
     }
 
-    window.onload = fetchAll;
+    let userBadgePopupTimer = null;
+    function showUserBadgePopup(anchor) {
+        if (!currentUser) return;
+        closeUserBadgePopup();
+        const popup = document.createElement('div');
+        popup.id = 'userBadgePopup';
+        popup.textContent = currentUser;
+        popup.style.cssText = 'position:fixed; background:#333; color:white; padding:6px 10px; border-radius:6px; font-size:13px; white-space:nowrap; z-index:10000; box-shadow:0 2px 8px rgba(0,0,0,0.2);';
+        const rect = anchor.getBoundingClientRect();
+        popup.style.top = (rect.bottom + 5) + 'px';
+        popup.style.left = Math.max(8, Math.min(window.innerWidth - 250, rect.right - 200)) + 'px';
+        document.body.appendChild(popup);
+        userBadgePopupTimer = setTimeout(closeUserBadgePopup, 2500);
+        anchor.addEventListener('mouseleave', closeUserBadgePopup, { once: true });
+    }
+    function closeUserBadgePopup() {
+        const popup = document.getElementById('userBadgePopup');
+        if (popup) popup.remove();
+        if (userBadgePopupTimer) { clearTimeout(userBadgePopupTimer); userBadgePopupTimer = null; }
+    }
+
+    window.onload = () => {
+        const badge = document.getElementById('userBadge');
+        if (badge && currentUser) badge.textContent = currentUser.split('@')[0];
+        fetchAll();
+    };
 
     async function logout() {
         const count = await db.pending_queue.count();

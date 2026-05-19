@@ -39,8 +39,63 @@ function updateSyncUI(count) {
     }
 }
 
+function displayUserBadge() {
+    const badge = document.getElementById('userBadge');
+    if (badge && currentUser) badge.textContent = currentUser.split('@')[0];
+}
+
+async function checkAdminAndShowPayrollButton() {
+    if (!currentUser) return;
+    try {
+        const { data } = await _supabase
+            .from('admins')
+            .select('email')
+            .eq('email', currentUser)
+            .maybeSingle();
+        if (data) {
+            const btn = document.getElementById('payrollBtn');
+            if (btn) btn.style.display = '';
+        }
+    } catch (e) {
+        console.warn('Admin check failed:', e);
+    }
+}
+
+let userBadgePopupTimer = null;
+
+function showUserBadgePopup(anchor) {
+    if (!currentUser) return;
+    closeUserBadgePopup();
+
+    const popup = document.createElement('div');
+    popup.id = 'userBadgePopup';
+    popup.textContent = currentUser;
+    popup.style.cssText = 'position:fixed; background:#333; color:white; padding:6px 10px; border-radius:6px; font-size:13px; white-space:nowrap; z-index:10000; box-shadow:0 2px 8px rgba(0,0,0,0.2);';
+
+    const rect = anchor.getBoundingClientRect();
+    popup.style.top = (rect.bottom + 5) + 'px';
+    popup.style.left = Math.max(8, Math.min(window.innerWidth - 250, rect.right - 200)) + 'px';
+
+    document.body.appendChild(popup);
+
+    userBadgePopupTimer = setTimeout(closeUserBadgePopup, 2500);
+    anchor.addEventListener('mouseleave', closeUserBadgePopup, { once: true });
+}
+
+function closeUserBadgePopup() {
+    const popup = document.getElementById('userBadgePopup');
+    if (popup) popup.remove();
+    if (userBadgePopupTimer) {
+        clearTimeout(userBadgePopupTimer);
+        userBadgePopupTimer = null;
+    }
+}
+
 // --- UPDATED ONLOAD (With Migration) ---
 window.onload = async function() {
+    displayUserBadge();
+    checkAdminAndShowPayrollButton();
+
     const saved = localStorage.getItem('activeWateringSessions');
     if (saved) {
         activeTimers = JSON.parse(saved);

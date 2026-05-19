@@ -57,6 +57,10 @@
         .bg-danger { background: #f8d7da; color: #721c24; }
         
         .btn-export { background: #007bff; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 15px; padding: 10px; font-size: 13px; }
+        .btn-page { background: var(--dark); color: white; border: none; padding: 8px 14px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+        .btn-page:disabled { background: #ccc; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -64,7 +68,10 @@
 <div class="container">
     <div class="header">
         <h1>📊 Watering Performance Analytics</h1>
-        <a href="form.html" class="nav-btn">🏠 Home</a>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <span onclick="showUserBadgePopup(this)" style="color:#666; font-size:13px; cursor:pointer; user-select:none;" title="Tap to show full email">👤 <span id="userBadge"></span></span>
+            <a href="form.html" class="nav-btn">🏠 Home</a>
+        </div>
     </div>
 
     <div class="filter-card">
@@ -120,6 +127,12 @@
             <tbody id="dataTable"></tbody>
         </table>
     </div>
+
+    <div class="pagination">
+        <button id="prevBtn" class="btn-page" onclick="changePage(-1)">⬅️</button>
+        <span id="pageInfo">Page 1</span>
+        <button id="nextBtn" class="btn-page" onclick="changePage(1)">➡️</button>
+    </div>
 </div>
 
 <script>
@@ -139,6 +152,9 @@
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
     let fullData = [];
+    let filteredData = [];
+    let currentPage = 1;
+    const recordsPerPage = 10;
 
     function syncPlots() {
         const loc = document.getElementById('locSelect').value;
@@ -194,6 +210,7 @@
         if (loc !== "ALL") filtered = filtered.filter(d => d.plot_name.startsWith(loc) || (plotData[loc] && plotData[loc].includes(d.plot_name)));
         if (plot !== "ALL") filtered = filtered.filter(d => d.plot_name === plot);
 
+        currentPage = 1;
         calculateStats(filtered);
     }
 
@@ -203,50 +220,21 @@
         let totalIssueCount = 0;
         let issueTypes = {};
 
-        const tbody = document.getElementById('dataTable');
-        const rows = [];
-        const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
-
         data.forEach(row => {
             const isIssue = row.issue_reason !== null;
             const isPartial = !isIssue && row.duration < 50;
-
-            let badgeClass = 'bg-success';
-            let statusText = 'Berjaya';
-
             if (isIssue) {
                 totalIssueCount++;
                 issueTypes[row.issue_reason] = (issueTypes[row.issue_reason] || 0) + 1;
-                badgeClass = 'bg-danger';
-                statusText = '⚠️ ' + row.issue_reason;
             } else if (isPartial) {
                 partialCount++;
-                badgeClass = 'bg-warning';
-                statusText = '🟡 Separuh';
             } else {
                 successCount++;
             }
-
-            const displayDateObj = row.end_time ? new Date(row.end_time) : new Date(row.start_time);
-            const formattedDate = displayDateObj.toLocaleDateString('ms-MY');
-            const startTimeStr = row.start_time ? fmtTime(row.start_time) : '-';
-            const endTimeStr = row.end_time ? fmtTime(row.end_time) : '-';
-
-            rows.push(`
-                <tr>
-                    <td style="font-size: 13px;">
-                        ${formattedDate}<br>
-                        <small style="color:#999;">Mula:</small> <strong style="color:#28a745;">${startTimeStr}</strong><br>
-                        <small style="color:#999;">Tamat:</small> <strong style="color:#28a745;">${endTimeStr}</strong>
-                    </td>
-                    <td><strong>${row.plot_name}</strong></td>
-                    <td><span class="badge ${badgeClass}" style="font-size:10px; padding: 4px 8px;">${statusText}</span></td>
-                    <td style="font-weight:bold;">${row.duration || 0} <small style="color:#999; font-weight:normal;">min</small></td>
-                    <td style="color:#999; font-size:11px; vertical-align:middle;">${row.user_email ? row.user_email.split('@')[0] : '-'}</td>
-                </tr>`);
         });
 
-        tbody.innerHTML = rows.join('');
+        filteredData = data;
+        renderTablePage();
 
         document.getElementById('statSuccess').innerText = successCount;
         document.getElementById('statPartial').innerText = partialCount;
@@ -264,22 +252,82 @@
         }
     }
 
+    function renderTablePage() {
+        const tbody = document.getElementById('dataTable');
+        const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+        const start = (currentPage - 1) * recordsPerPage;
+        const pageItems = filteredData.slice(start, start + recordsPerPage);
+
+        if (pageItems.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 30px; color:#999;">Tiada rekod dijumpai.</td></tr>';
+        } else {
+            const rows = pageItems.map(row => {
+                const isIssue = row.issue_reason !== null;
+                const isPartial = !isIssue && row.duration < 50;
+                let badgeClass = 'bg-success';
+                let statusText = 'Berjaya';
+                if (isIssue) {
+                    badgeClass = 'bg-danger';
+                    statusText = '⚠️ ' + row.issue_reason;
+                } else if (isPartial) {
+                    badgeClass = 'bg-warning';
+                    statusText = '🟡 Separuh';
+                }
+                const displayDateObj = row.end_time ? new Date(row.end_time) : new Date(row.start_time);
+                const formattedDate = displayDateObj.toLocaleDateString('ms-MY');
+                const startTimeStr = row.start_time ? fmtTime(row.start_time) : '-';
+                const endTimeStr = row.end_time ? fmtTime(row.end_time) : '-';
+                return `
+                    <tr>
+                        <td style="font-size: 13px;">
+                            ${formattedDate}<br>
+                            <small style="color:#999;">Mula:</small> <strong style="color:#28a745;">${startTimeStr}</strong><br>
+                            <small style="color:#999;">Tamat:</small> <strong style="color:#28a745;">${endTimeStr}</strong>
+                        </td>
+                        <td><strong>${row.plot_name}</strong></td>
+                        <td><span class="badge ${badgeClass}" style="font-size:10px; padding: 4px 8px;">${statusText}</span></td>
+                        <td style="font-weight:bold;">${row.duration || 0} <small style="color:#999; font-weight:normal;">min</small></td>
+                        <td style="color:#999; font-size:11px; vertical-align:middle;">${row.user_email ? row.user_email.split('@')[0] : '-'}</td>
+                    </tr>`;
+            });
+            tbody.innerHTML = rows.join('');
+        }
+
+        const totalPages = Math.max(1, Math.ceil(filteredData.length / recordsPerPage));
+        document.getElementById('pageInfo').innerText = `Page ${currentPage} / ${totalPages}`;
+        document.getElementById('prevBtn').disabled = currentPage === 1;
+        document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+    }
+
+    function changePage(dir) {
+        const totalPages = Math.max(1, Math.ceil(filteredData.length / recordsPerPage));
+        const newPage = currentPage + dir;
+        if (newPage < 1 || newPage > totalPages) return;
+        currentPage = newPage;
+        renderTablePage();
+        const tableTop = document.querySelector('.table-wrapper');
+        if (tableTop) tableTop.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     function downloadCSV() {
         let csv = "Tarikh,Mula,Tamat,Plot,Status,Durasi,User\n";
-        document.querySelectorAll("#dataTable tr").forEach(row => {
-            const cells = Array.from(row.querySelectorAll("td"));
-            if(cells.length > 0) {
-                const lines = cells[0].innerText.split('\n').map(s => s.trim()).filter(Boolean);
-                const datePart = lines[0] || '';
-                const mulaPart = (lines[1] || '').replace(/^Mula:\s*/i, '').trim();
-                const tamatPart = (lines[2] || '').replace(/^Tamat:\s*/i, '').trim();
-                const plotPart = cells[1].innerText.replace(/,/g, "");
-                const statusPart = cells[2].innerText.replace(/,/g, "");
-                const durPart = cells[3].innerText.replace(/min/g, "").trim();
-                const userPart = cells[4].innerText.replace(/,/g, "");
-                csv += `${datePart},${mulaPart},${tamatPart},${plotPart},${statusPart},${durPart},${userPart}\n`;
-            }
+        const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+        filteredData.forEach(row => {
+            const isIssue = row.issue_reason !== null;
+            const isPartial = !isIssue && row.duration < 50;
+            const statusText = (isIssue ? row.issue_reason : (isPartial ? 'Separuh' : 'Berjaya')).replace(/,/g, '');
+            const displayDateObj = row.end_time ? new Date(row.end_time) : new Date(row.start_time);
+            const dateStr = displayDateObj.toLocaleDateString('ms-MY');
+            const mulaPart = row.start_time ? fmtTime(row.start_time) : '-';
+            const tamatPart = row.end_time ? fmtTime(row.end_time) : '-';
+            const plotPart = (row.plot_name || '').replace(/,/g, '');
+            const userPart = (row.user_email ? row.user_email.split('@')[0] : '-').replace(/,/g, '');
+            const durPart = String(row.duration || 0);
+            csv += `${dateStr},${mulaPart},${tamatPart},${plotPart},${statusText},${durPart},${userPart}\n`;
         });
+
         const blob = new Blob([csv], { type: 'text/csv' });
         const a = document.createElement('a');
         a.href = window.URL.createObjectURL(blob);
@@ -287,7 +335,31 @@
         a.click();
     }
 
+    let userBadgePopupTimer = null;
+    function showUserBadgePopup(anchor) {
+        if (!currentUser) return;
+        closeUserBadgePopup();
+        const popup = document.createElement('div');
+        popup.id = 'userBadgePopup';
+        popup.textContent = currentUser;
+        popup.style.cssText = 'position:fixed; background:#333; color:white; padding:6px 10px; border-radius:6px; font-size:13px; white-space:nowrap; z-index:10000; box-shadow:0 2px 8px rgba(0,0,0,0.2);';
+        const rect = anchor.getBoundingClientRect();
+        popup.style.top = (rect.bottom + 5) + 'px';
+        popup.style.left = Math.max(8, Math.min(window.innerWidth - 250, rect.right - 200)) + 'px';
+        document.body.appendChild(popup);
+        userBadgePopupTimer = setTimeout(closeUserBadgePopup, 2500);
+        anchor.addEventListener('mouseleave', closeUserBadgePopup, { once: true });
+    }
+    function closeUserBadgePopup() {
+        const popup = document.getElementById('userBadgePopup');
+        if (popup) popup.remove();
+        if (userBadgePopupTimer) { clearTimeout(userBadgePopupTimer); userBadgePopupTimer = null; }
+    }
+
     window.onload = () => {
+        const badge = document.getElementById('userBadge');
+        if (badge && currentUser) badge.textContent = currentUser.split('@')[0];
+
         document.getElementById('startDate').value = getMonthStart();
         document.getElementById('endDate').value = getToday();
         loadData();
