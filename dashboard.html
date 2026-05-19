@@ -29,8 +29,14 @@
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: var(--bg); color: #333; margin: 0; }
         .container { max-width: 1100px; margin: auto; padding: 20px; }
         
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+        .header h1 { margin: 0; line-height: 1.2; }
         .nav-btn { text-decoration: none; color: white; background: var(--dark); padding: 10px 20px; border-radius: 8px; font-weight: bold; }
+
+        @media (max-width: 600px) {
+            .header h1 { font-size: 22px; flex: 1 1 100%; }
+            .header > div:last-child { flex: 0 0 auto; margin-left: auto; }
+        }
 
         .filter-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 25px; }
         .filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; align-items: flex-end; }
@@ -69,7 +75,7 @@
     <div class="header">
         <h1>📊 Watering Performance Analytics</h1>
         <div style="display: flex; align-items: center; gap: 12px;">
-            <span onclick="showUserBadgePopup(this)" style="color:#666; font-size:13px; cursor:pointer; user-select:none;" title="Tap to show full email">👤 <span id="userBadge"></span></span>
+            <span onclick="showUserBadgePopup(this)" style="color:#666; font-size:13px; cursor:pointer; user-select:none; white-space:nowrap;" title="Tap to show full email">👤 <span id="userBadge"></span></span>
             <a href="form.html" class="nav-btn">🏠 Home</a>
         </div>
     </div>

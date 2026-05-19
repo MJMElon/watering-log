@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'siram-go-v11';
+const CACHE_VERSION = 'siram-go-v31';
 
 const SHELL_ASSETS = [
     'index.html',
@@ -10,10 +10,12 @@ const SHELL_ASSETS = [
     'form.css',
     'form.js',
     'plots.js',
+    'payroll_config.js',
     'sw-register.js',
     'manifest.json',
     'icon-512.png',
     'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+    'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js',
     'https://unpkg.com/dexie/dist/dexie.js'
 ];
 

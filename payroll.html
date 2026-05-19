@@ -14,19 +14,133 @@
     <link rel="manifest" href="manifest.json">
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+    <script src="plots.js"></script>
+    <script src="payroll_config.js"></script>
     <script src="sw-register.js"></script>
 
     <style>
         :root {
             --dark: #343a40;
             --bg: #f4f7f6;
+            --primary: #28a745;
         }
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: var(--bg); color: #333; margin: 0; }
         .container { max-width: 1100px; margin: auto; padding: 20px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+        .header h1 { margin: 0; line-height: 1.2; }
         .nav-btn { text-decoration: none; color: white; background: var(--dark); padding: 10px 20px; border-radius: 8px; font-weight: bold; }
-        .placeholder-card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center; }
+
+        @media (max-width: 600px) {
+            .header h1 { font-size: 22px; flex: 1 1 100%; }
+            .header > div:last-child { flex: 0 0 auto; margin-left: auto; }
+        }
+
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .card h3 { margin: 0 0 15px 0; }
+
+        .month-picker-card { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+        .month-picker-card input { padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+        .snapshot-status { font-size: 13px; color: #666; margin-left: auto; }
+        .snapshot-status.saved { color: #28a745; font-weight: bold; }
+
+        #inputAreas { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+        .area-section { border: 1px solid #e3eee3; border-radius: 8px; overflow: hidden; min-width: 0; }
+        .area-header { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 10px 12px; background: #eef5ee; }
+        .area-header .area-code { font-size: 15px; font-weight: bold; color: #155724; min-width: 50px; }
+        .area-header .area-summary { color: #777; font-size: 11px; width: 100%; margin-top: 2px; }
+        .operator-input { padding: 4px 8px; border: 1px solid #cce0cc; border-radius: 4px; font-size: 13px; width: 130px; background: white; flex: 1 1 130px; min-width: 100px; }
+        .operator-input:focus { border-color: var(--primary); outline: none; }
+        .area-body { padding: 8px 10px 12px; background: white; }
+
+        .plot-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .plot-table th, .plot-table td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align: left; }
+        .plot-table th { background: #fafafa; font-weight: bold; font-size: 12px; }
+        .plot-table td.num { text-align: right; }
+        .plot-table input { width: 75px; padding: 5px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; text-align: right; box-sizing: border-box; }
+        .plot-table input.target-input { width: 55px; }
+        .plot-table input:focus { border-color: var(--primary); outline: none; }
+        .plot-table tr.no-sessions td { color: #aaa; }
+        .plot-table tr.no-sessions input { background: #fafafa; }
+
+        .save-row { text-align: center; margin: 15px 0 25px 0; }
+        .btn-save { background: var(--primary); color: white; border: none; padding: 12px 28px; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; }
+        .btn-save:disabled { background: #aaa; cursor: not-allowed; }
+        .btn-save:hover:not(:disabled) { background: #218838; }
+
+        .table-wrapper { overflow-x: auto; }
+        .snapshots-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .snapshots-table th, .snapshots-table td { border-bottom: 1px solid #eee; padding: 10px 12px; text-align: left; }
+        .snapshots-table th { background: #fafafa; font-weight: bold; }
+        .snapshots-table td.num { text-align: right; font-weight: bold; }
+        .empty-list { text-align: center; color: #999; padding: 30px; font-style: italic; }
+        .btn-pdf { background: #d9534f; color: white; border: none; padding: 6px 12px; border-radius: 5px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        .btn-pdf:hover { background: #c9302c; }
+
+        .warnings { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 12px 15px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; }
+
         #loadingState { text-align: center; padding: 60px; color: #666; font-size: 14px; }
+
+        /* PDF preview modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px; box-sizing: border-box; }
+        .modal-content { background: white; border-radius: 10px; max-width: 900px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .modal-header { padding: 12px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h2 { margin: 0; font-size: 17px; }
+        .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #999; padding: 0 4px; line-height: 1; }
+        .modal-close:hover { color: #333; }
+        .modal-body { padding: 20px; overflow-y: auto; flex: 1; background: #f9f9f9; }
+        #pdfPreviewContent { background: white; padding: 25px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        .modal-footer { padding: 12px 20px; border-top: 1px solid #eee; display: flex; gap: 10px; justify-content: flex-end; }
+        .btn-cancel { background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+        .btn-cancel:hover { background: #5a6268; }
+        .btn-download { background: #d9534f; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: bold; }
+        .btn-download:hover:not(:disabled) { background: #c9302c; }
+        .btn-download:disabled { background: #aaa; cursor: not-allowed; }
+
+        /* Claim form styles (used inside the preview/PDF) */
+        #pdfPreviewContent h1 { margin: 0 0 20px 0; font-size: 22px; }
+        #pdfPreviewContent .pf-metadata { width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 13px; }
+        #pdfPreviewContent .pf-metadata th,
+        #pdfPreviewContent .pf-metadata td { border: 1px solid #999; padding: 8px 12px; }
+        #pdfPreviewContent .pf-metadata th { background: #f5f5f5; width: 220px; font-weight: bold; text-align: right; }
+        #pdfPreviewContent .pf-metadata td { text-align: center; }
+        #pdfPreviewContent .pf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        #pdfPreviewContent .pf-table th,
+        #pdfPreviewContent .pf-table td { border: 1px solid #999; padding: 8px; }
+        #pdfPreviewContent .pf-table th { background: #f5f5f5; font-weight: bold; text-align: left; }
+        #pdfPreviewContent .pf-table .num { text-align: right; }
+        #pdfPreviewContent .pf-table tfoot td { font-weight: bold; background: #fafafa; }
+
+        /* Page 2: achievement view — horizontal progress bars */
+        #pdfPreviewContent .page-break { page-break-before: always; break-before: page; margin-top: 30px; padding-top: 20px; border-top: 2px dashed #ccc; }
+        #pdfPreviewContent .ach-section { margin-bottom: 16px; }
+        #pdfPreviewContent .ach-section h3 { margin: 12px 0 6px 0; font-size: 13px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+        #pdfPreviewContent .ach-area-total { font-size: 11px; color: #555; font-weight: normal; }
+        #pdfPreviewContent .ach-row { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+        #pdfPreviewContent .ach-plot-name { width: 40px; font-size: 11px; font-weight: bold; color: #444; flex-shrink: 0; }
+        #pdfPreviewContent .ach-bar { flex: 1; height: 9px; background: #f0f0f0; border-radius: 3px; overflow: hidden; border: 1px solid #ddd; display: flex; }
+        #pdfPreviewContent .ach-bar-fill { height: 100%; background: #28a745; }
+        #pdfPreviewContent .ach-bar-rain { height: 100%; background: #d9534f; }
+        #pdfPreviewContent .ach-text { display: inline-flex; align-items: baseline; gap: 6px; min-width: 105px; font-size: 11px; flex-shrink: 0; justify-content: flex-end; }
+        #pdfPreviewContent .ach-pct { font-weight: bold; color: #155724; }
+        #pdfPreviewContent .ach-rounds { font-size: 9px; color: #999; }
+
+        #pdfPreviewContent .summary-section { margin-top: 22px; }
+        #pdfPreviewContent .summary-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; background: #f9f9f9; margin-bottom: 6px; }
+        #pdfPreviewContent .summary-label { width: 170px; font-size: 12px; font-weight: bold; color: #333; flex-shrink: 0; }
+        #pdfPreviewContent .summary-bar-wrap { flex: 1; height: 12px; background: #ececec; border-radius: 4px; overflow: hidden; border: 1px solid #ccc; display: flex; }
+        #pdfPreviewContent .summary-bar-fill { height: 100%; background: #28a745; }
+        #pdfPreviewContent .summary-bar-rain { height: 100%; background: #d9534f; }
+        #pdfPreviewContent .summary-text { min-width: 130px; font-size: 12px; text-align: right; flex-shrink: 0; }
+        #pdfPreviewContent .summary-pct { font-size: 15px; font-weight: bold; color: #155724; }
+        #pdfPreviewContent .summary-rounds { font-size: 10px; color: #888; margin-left: 6px; }
+
+        #pdfPreviewContent .grand-total { margin-top: 14px; padding: 12px 15px; background: #155724; color: white; border-radius: 6px; }
+        #pdfPreviewContent .grand-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; font-size: 14px; font-weight: bold; }
+        #pdfPreviewContent .grand-rounds { font-size: 11px; opacity: 0.85; font-weight: normal; }
+        #pdfPreviewContent .grand-bar { height: 10px; background: rgba(255,255,255,0.2); border-radius: 4px; overflow: hidden; display: flex; }
+        #pdfPreviewContent .grand-bar-fill { height: 100%; background: white; }
+        #pdfPreviewContent .grand-bar-rain { height: 100%; background: #ff8a8a; }
     </style>
 </head>
 <body>
@@ -37,19 +151,71 @@
     <div class="header">
         <h1>💰 Payroll Report</h1>
         <div style="display: flex; align-items: center; gap: 12px;">
-            <span onclick="showUserBadgePopup(this)" style="color:#666; font-size:13px; cursor:pointer; user-select:none;" title="Tap to show full email">👤 <span id="userBadge"></span></span>
+            <span onclick="showUserBadgePopup(this)" style="color:#666; font-size:13px; cursor:pointer; user-select:none; white-space:nowrap;" title="Tap to show full email">👤 <span id="userBadge"></span></span>
             <a href="form.html" class="nav-btn">🏠 Home</a>
         </div>
     </div>
 
-    <div class="placeholder-card">
-        <h2 style="margin:0 0 10px 0;">Coming Soon</h2>
-        <p style="color:#666; margin:0;">Laporan gaji akan dipaparkan di sini.</p>
+    <div class="card month-picker-card">
+        <label for="monthPicker" style="font-weight:bold;">Pilih Bulan:</label>
+        <input type="month" id="monthPicker" onchange="loadMonth()">
+        <span id="snapshotStatus" class="snapshot-status"></span>
     </div>
 
-    <div style="text-align: center; margin-top: 40px; padding-bottom: 20px;">
+    <div id="warnings" class="warnings" style="display:none;"></div>
+
+    <div class="card input-card">
+        <h3>Input</h3>
+        <p style="font-size:12px; color:#666; margin:-5px 0 12px 0;">Tukar nilai untuk auto-save. Tekan "Save Payroll Report" untuk menjana laporan bulanan.</p>
+        <div id="inputAreas">
+            <p style="text-align:center; color:#999;">Pilih bulan untuk memuatkan data.</p>
+        </div>
+    </div>
+
+    <div class="save-row">
+        <button id="saveBtn" class="btn-save" onclick="saveSnapshot()" disabled>💾 Save Payroll Report</button>
+    </div>
+
+    <div class="card">
+        <h3>📋 Senarai Laporan Payroll Tersimpan</h3>
+        <div class="table-wrapper">
+            <table class="snapshots-table">
+                <thead>
+                    <tr>
+                        <th>Bulan</th>
+                        <th style="text-align:right;">Total Claim (RM)</th>
+                        <th>Disimpan</th>
+                        <th>Oleh</th>
+                        <th style="width:100px;">Tindakan</th>
+                    </tr>
+                </thead>
+                <tbody id="snapshotsList">
+                    <tr><td colspan="5" class="empty-list">Memuatkan...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="logout-row" style="text-align: center; margin-top: 40px; padding-bottom: 20px;">
         <hr style="border: 0; border-top: 1px solid #eee; width: 80%; margin: 20px auto;">
         <button onclick="logout()" style="background: none; border: 1px solid #ccc; color: #070000; padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;">Log Keluar</button>
+    </div>
+</div>
+
+<!-- PDF preview modal — admin reviews before downloading -->
+<div id="pdfPreviewModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closePDFPreview()">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>📄 PDF Preview</h2>
+            <button class="modal-close" onclick="closePDFPreview()" title="Close">✕</button>
+        </div>
+        <div class="modal-body">
+            <div id="pdfPreviewContent"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closePDFPreview()">Cancel</button>
+            <button id="btnDownloadPDF" class="btn-download" onclick="confirmDownloadPDF()">📥 Download PDF</button>
+        </div>
     </div>
 </div>
 
@@ -63,6 +229,16 @@
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyaHpsb25pb2d5cXp3eWphdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDAyODMsImV4cCI6MjA5MTY3NjI4M30.A6_fhzaOHVAForH7Ps7fyCCdHPsjDyEQj8GJyqLwhA0';
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
+    // ----- STATE -----
+    let sessionsByPlot = {};
+    let rainingDaysByPlot = {};
+    let seedlingsByPlot = {};
+    let targetsByPlot = {};
+    let operatorsByArea = {};
+    let currentSnapshot = null;
+    let allSnapshots = [];
+
+    // ----- USER BADGE POPUP -----
     let userBadgePopupTimer = null;
     function showUserBadgePopup(anchor) {
         if (!currentUser) return;
@@ -84,13 +260,11 @@
         if (userBadgePopupTimer) { clearTimeout(userBadgePopupTimer); userBadgePopupTimer = null; }
     }
 
+    // ----- ADMIN GATE -----
     async function verifyAdminAccess() {
         try {
             const { data, error } = await _supabase
-                .from('admins')
-                .select('email')
-                .eq('email', currentUser)
-                .maybeSingle();
+                .from('admins').select('email').eq('email', currentUser).maybeSingle();
 
             if (error || !data) {
                 alert('Halaman ini hanya untuk admin.');
@@ -101,10 +275,664 @@
             document.getElementById('loadingState').style.display = 'none';
             document.getElementById('content').style.display = '';
             document.getElementById('userBadge').textContent = currentUser.split('@')[0];
+
+            const now = new Date();
+            const monthValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            document.getElementById('monthPicker').value = monthValue;
+            loadMonth();
         } catch (e) {
             alert('Tidak dapat sahkan akses. Sila cuba semula.');
             window.location.href = 'form.html';
         }
+    }
+
+    // ----- HELPERS -----
+    function formatMonthLabel(monthValue) {
+        const [y, m] = monthValue.split('-').map(Number);
+        return new Date(y, m - 1, 1).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' });
+    }
+    function fmtMoney(n) { return Number(n).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function fmtNumber(n) { return Number(n).toLocaleString('en-MY'); }
+
+    // ----- LOAD MONTH -----
+    // Force-flush all in-memory inputs to DB. Called before changing month so the
+    // pending debounced auto-saves don't get clobbered by the next month's fetch.
+    async function saveAllInputsToDB() {
+        for (const plot in plotSaveTimers) clearTimeout(plotSaveTimers[plot]);
+        for (const area in operatorSaveTimers) clearTimeout(operatorSaveTimers[area]);
+
+        const now = new Date().toISOString();
+
+        const seedlingRows = Object.entries(seedlingsByPlot).map(([plot, count]) => ({
+            plot_name: plot,
+            seedling_count: count || 0,
+            target_per_day: targetsByPlot[plot] || 0,
+            updated_at: now,
+            updated_by: currentUser
+        }));
+
+        const operatorRows = Object.entries(operatorsByArea)
+            .filter(([, name]) => name && name.trim())
+            .map(([area, name]) => ({
+                area_code: area,
+                operator_name: name.trim(),
+                updated_at: now,
+                updated_by: currentUser
+            }));
+
+        const promises = [];
+        if (seedlingRows.length > 0) {
+            promises.push(_supabase.from('plot_seedlings').upsert(seedlingRows, { onConflict: 'plot_name' }));
+        }
+        if (operatorRows.length > 0) {
+            promises.push(_supabase.from('area_operators').upsert(operatorRows, { onConflict: 'area_code' }));
+        }
+
+        if (promises.length > 0) {
+            const results = await Promise.all(promises);
+            for (const r of results) {
+                if (r.error) console.error('flush save failed:', r.error);
+            }
+        }
+    }
+
+    async function loadMonth() {
+        const monthValue = document.getElementById('monthPicker').value;
+        if (!monthValue) return;
+        document.getElementById('saveBtn').disabled = true;
+
+        // Flush any unsaved in-memory inputs to DB before fetching the new month
+        await saveAllInputsToDB();
+
+        const [sessionsResult, inputs, snapshotResult] = await Promise.all([
+            fetchSessionsForMonth(monthValue),
+            fetchCurrentInputs(),
+            fetchSnapshotForMonth(monthValue)
+        ]);
+
+        sessionsByPlot = sessionsResult.sessions || {};
+        rainingDaysByPlot = sessionsResult.rainingDays || {};
+        currentSnapshot = snapshotResult;
+
+        seedlingsByPlot = {};
+        targetsByPlot = {};
+        for (const plot in PLOT_SEEDLINGS) {
+            seedlingsByPlot[plot] = (inputs.seedlings[plot] != null)
+                ? inputs.seedlings[plot]
+                : (PLOT_SEEDLINGS[plot] || 0);
+            targetsByPlot[plot] = inputs.targets[plot] || 0;
+        }
+        operatorsByArea = {};
+        for (const area in AREA_OPERATORS) {
+            operatorsByArea[area] = inputs.operators[area] || AREA_OPERATORS[area] || '';
+        }
+
+        renderInputSection();
+        renderSnapshotStatus();
+        await refreshSnapshotsList();
+        document.getElementById('saveBtn').disabled = false;
+    }
+
+    async function fetchCurrentInputs() {
+        // Separate queries so a missing target_per_day column doesn't wipe seedling data
+        const [seedlingsRes, targetsRes, operatorsRes] = await Promise.all([
+            _supabase.from('plot_seedlings').select('plot_name, seedling_count'),
+            _supabase.from('plot_seedlings').select('plot_name, target_per_day'),
+            _supabase.from('area_operators').select('area_code, operator_name')
+        ]);
+        if (seedlingsRes.error) console.error('fetch seedlings:', seedlingsRes.error);
+        if (targetsRes.error) console.error('fetch targets:', targetsRes.error);
+        if (operatorsRes.error) console.error('fetch operators:', operatorsRes.error);
+
+        const seedlings = {};
+        if (seedlingsRes.data) for (const r of seedlingsRes.data) seedlings[r.plot_name] = r.seedling_count || 0;
+        const targets = {};
+        if (targetsRes.data) for (const r of targetsRes.data) targets[r.plot_name] = r.target_per_day || 0;
+        const operators = {};
+        if (operatorsRes.data) for (const r of operatorsRes.data) operators[r.area_code] = r.operator_name || '';
+        return { seedlings, targets, operators };
+    }
+
+    async function fetchSessionsForMonth(monthValue) {
+        const [year, month] = monthValue.split('-').map(Number);
+        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        const nextMonth = month === 12 ? 1 : month + 1;
+        const nextYear = month === 12 ? year + 1 : year;
+        const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+        const { data, error } = await _supabase.from('watering_logs')
+            .select('plot_name, duration, issue_reason, end_time, start_time')
+            .gte('end_time', startDate + 'T00:00:00')
+            .lt('end_time', endDate + 'T00:00:00');
+        if (error) { console.error('fetchSessionsForMonth:', error); return { sessions: {}, rainingDays: {} }; }
+
+        const sessions = {};
+        const rainingDateSets = {}; // { plot: Set of 'YYYY-MM-DD' strings }
+        for (const r of (data || [])) {
+            // Raining day: any record with issue_reason = 'Hujan', dedupe by date per plot
+            if (r.issue_reason === 'Hujan') {
+                const isoDate = (r.end_time || r.start_time || '').slice(0, 10);
+                if (isoDate) {
+                    if (!rainingDateSets[r.plot_name]) rainingDateSets[r.plot_name] = new Set();
+                    rainingDateSets[r.plot_name].add(isoDate);
+                }
+                continue;
+            }
+            if (r.issue_reason !== null) continue;
+            if ((r.duration || 0) < 50) continue;
+            sessions[r.plot_name] = (sessions[r.plot_name] || 0) + 1;
+        }
+
+        const rainingDays = {};
+        for (const plot in rainingDateSets) rainingDays[plot] = rainingDateSets[plot].size;
+
+        return { sessions, rainingDays };
+    }
+
+    async function fetchSnapshotForMonth(monthValue) {
+        const { data, error } = await _supabase.from('payroll_snapshots')
+            .select('*').eq('snapshot_month', monthValue).maybeSingle();
+        if (error) { console.error('fetchSnapshotForMonth:', error); return null; }
+        return data;
+    }
+
+    function renderSnapshotStatus() {
+        const status = document.getElementById('snapshotStatus');
+        const saveBtn = document.getElementById('saveBtn');
+        if (currentSnapshot) {
+            const dt = new Date(currentSnapshot.updated_at || currentSnapshot.created_at);
+            status.textContent = `✓ Tersimpan: ${dt.toLocaleString('ms-MY')} oleh ${currentSnapshot.saved_by || '-'}`;
+            status.className = 'snapshot-status saved';
+            saveBtn.textContent = '💾 Update Payroll Report';
+        } else {
+            status.textContent = 'Belum disimpan untuk bulan ini.';
+            status.className = 'snapshot-status';
+            saveBtn.textContent = '💾 Save Payroll Report';
+        }
+    }
+
+    // ----- INPUT SECTION -----
+    // Tab order is column-major within each area: operator → all targets → all bibits → next area
+    function renderInputSection() {
+        const container = document.getElementById('inputAreas');
+        const areas = ['BNN', 'UNN1', 'UNN2'];
+        let nextTabIdx = 1;
+
+        const sections = areas.map(area => {
+            const plots = plotData[area] || [];
+            const operator = operatorsByArea[area] || '';
+            const withSessions = plots.filter(p => (sessionsByPlot[p] || 0) > 0).length;
+
+            const operatorTab = nextTabIdx++;
+            const targetBase = nextTabIdx;
+            nextTabIdx += plots.length;
+            const bibitBase = nextTabIdx;
+            nextTabIdx += plots.length;
+
+            const rows = plots.map((plot, idx) => {
+                const sessions = sessionsByPlot[plot] || 0;
+                const rainingDays = rainingDaysByPlot[plot] || 0;
+                const seedlings = seedlingsByPlot[plot] || 0;
+                const target = targetsByPlot[plot] || 0;
+                const rainingRounds = rainingDays * target;
+                const rowClass = sessions === 0 && rainingDays === 0 ? 'no-sessions' : '';
+                const targetTab = targetBase + idx;
+                const bibitTab = bibitBase + idx;
+                return `
+                    <tr class="${rowClass}">
+                        <td><strong>${plot}</strong></td>
+                        <td class="num">${sessions}</td>
+                        <td class="num" id="raining-${plot}" style="color:#d9534f;">${rainingRounds}</td>
+                        <td><input type="number" min="0" max="99" class="target-input" tabindex="${targetTab}" data-plot="${plot}" value="${target}" oninput="onTargetInput(this)" onblur="onTargetBlur(this)"></td>
+                        <td><input type="number" min="0" max="99999" tabindex="${bibitTab}" data-plot="${plot}" value="${seedlings}" oninput="onSeedlingInput(this)" onblur="onSeedlingBlur(this)"></td>
+                    </tr>`;
+            }).join('');
+
+            return `
+                <div class="area-section">
+                    <div class="area-header">
+                        <span class="area-code">${area}</span>
+                        <input type="text" class="operator-input" tabindex="${operatorTab}" data-area="${area}" value="${operator}" placeholder="Nama operator" oninput="onOperatorInput(this)" onblur="onOperatorBlur(this)">
+                        <span class="area-summary">${withSessions}/${plots.length} plot ada rekod</span>
+                    </div>
+                    <div class="area-body">
+                        <table class="plot-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:35px;">Plot</th>
+                                    <th style="width:60px; text-align:right;">Successful<br><small style="font-weight:normal; color:#888;">(Rounds)</small></th>
+                                    <th style="width:60px; text-align:right;">Raining<br><small style="font-weight:normal; color:#888;">(Rounds)</small></th>
+                                    <th style="width:65px;">Target/day<br><small style="font-weight:normal; color:#888;">(Rounds)</small></th>
+                                    <th>Bibit<br><small style="font-weight:normal; color:#888;">(Qty)</small></th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                </div>`;
+        });
+
+        container.innerHTML = sections.join('');
+    }
+
+// ----- AUTO-SAVE INPUTS (debounced) -----
+    // Seedling and Target share one timer per plot since they write to the same row.
+    const plotSaveTimers = {};
+    const operatorSaveTimers = {};
+
+    function onSeedlingInput(el) {
+        const plot = el.dataset.plot;
+        seedlingsByPlot[plot] = Math.max(0, Math.min(99999, parseInt(el.value, 10) || 0));
+        clearTimeout(plotSaveTimers[plot]);
+        plotSaveTimers[plot] = setTimeout(() => savePlotNow(el, plot), 500);
+    }
+    async function onSeedlingBlur(el) {
+        const plot = el.dataset.plot;
+        clearTimeout(plotSaveTimers[plot]);
+        await savePlotNow(el, plot);
+    }
+
+    function onTargetInput(el) {
+        const plot = el.dataset.plot;
+        targetsByPlot[plot] = Math.max(0, Math.min(99, parseInt(el.value, 10) || 0));
+        const rainingEl = document.getElementById(`raining-${plot}`);
+        if (rainingEl) rainingEl.textContent = (rainingDaysByPlot[plot] || 0) * targetsByPlot[plot];
+        clearTimeout(plotSaveTimers[plot]);
+        plotSaveTimers[plot] = setTimeout(() => savePlotNow(el, plot), 500);
+    }
+    async function onTargetBlur(el) {
+        const plot = el.dataset.plot;
+        clearTimeout(plotSaveTimers[plot]);
+        await savePlotNow(el, plot);
+    }
+
+    async function savePlotNow(el, plot) {
+        const { error } = await _supabase.from('plot_seedlings').upsert({
+            plot_name: plot,
+            seedling_count: seedlingsByPlot[plot] || 0,
+            target_per_day: targetsByPlot[plot] || 0,
+            updated_at: new Date().toISOString(),
+            updated_by: currentUser
+        }, { onConflict: 'plot_name' });
+        if (error) console.error('save plot failed:', error);
+        flashSaveStatus(el, !error);
+    }
+
+    function onOperatorInput(el) {
+        const area = el.dataset.area;
+        operatorsByArea[area] = el.value.trim();
+        clearTimeout(operatorSaveTimers[area]);
+        operatorSaveTimers[area] = setTimeout(() => saveOperatorNow(el, area), 500);
+    }
+    async function onOperatorBlur(el) {
+        const area = el.dataset.area;
+        clearTimeout(operatorSaveTimers[area]);
+        await saveOperatorNow(el, area);
+    }
+    async function saveOperatorNow(el, area) {
+        const name = (operatorsByArea[area] || '').trim();
+        if (!name) return;
+        const { error } = await _supabase.from('area_operators').upsert({
+            area_code: area,
+            operator_name: name,
+            updated_at: new Date().toISOString(),
+            updated_by: currentUser
+        }, { onConflict: 'area_code' });
+        if (error) console.error('save operator failed:', error);
+        flashSaveStatus(el, !error);
+    }
+
+    function flashSaveStatus(el, ok) {
+        const original = el.style.borderColor;
+        el.style.borderColor = ok ? '#28a745' : '#d9534f';
+        setTimeout(() => { el.style.borderColor = original; }, 800);
+    }
+
+    // ----- SAVE PAYROLL REPORT (snapshot) -----
+    async function saveSnapshot() {
+        const monthValue = document.getElementById('monthPicker').value;
+        if (!monthValue) return;
+
+        const saveBtn = document.getElementById('saveBtn');
+        const originalText = saveBtn.textContent;
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Menyimpan...';
+
+        const snapshot = buildSnapshotData(monthValue);
+        const now = new Date().toISOString();
+
+        const payload = {
+            snapshot_month: monthValue,
+            snapshot_data: snapshot,
+            saved_by: currentUser,
+            updated_at: now
+        };
+
+        const { error } = await _supabase.from('payroll_snapshots')
+            .upsert(payload, { onConflict: 'snapshot_month' });
+
+        if (error) {
+            console.error('saveSnapshot:', error);
+            alert('Gagal menyimpan: ' + (error.message || error));
+            saveBtn.disabled = false;
+            saveBtn.textContent = originalText;
+            return;
+        }
+
+        await pruneOldSnapshots();
+
+        // Refresh snapshot list + status, but DO NOT re-render input section.
+        // Re-rendering would reset whatever the admin just typed if the
+        // debounced auto-save hasn't fired yet.
+        currentSnapshot = await fetchSnapshotForMonth(monthValue);
+        renderSnapshotStatus();
+        await refreshSnapshotsList();
+        saveBtn.disabled = false;
+
+        alert('Laporan disimpan ✓');
+    }
+
+    function buildSnapshotData(monthValue) {
+        const areasOut = {};
+        let grandTotal = 0;
+        const rate = PAYROLL_RATE;
+
+        for (const areaCode of ['BNN', 'UNN1', 'UNN2']) {
+            const plotsIn = plotData[areaCode] || [];
+            const plotsOut = {};
+            let totalUnit = 0;
+            for (const plot of plotsIn) {
+                const sessions = sessionsByPlot[plot] || 0;
+                const raining_days = rainingDaysByPlot[plot] || 0;
+                const seedlings = seedlingsByPlot[plot] || 0;
+                const target_per_day = targetsByPlot[plot] || 0;
+                const subtotal = sessions * seedlings * rate;
+                plotsOut[plot] = { sessions, raining_days, seedlings, target_per_day, subtotal: +subtotal.toFixed(4) };
+                totalUnit += sessions * seedlings;
+            }
+            const areaSubtotal = totalUnit * rate;
+            grandTotal += areaSubtotal;
+            areasOut[areaCode] = {
+                operator: operatorsByArea[areaCode] || AREA_OPERATORS[areaCode] || '',
+                plots: plotsOut,
+                total_unit: totalUnit,
+                area_subtotal: +areaSubtotal.toFixed(4)
+            };
+        }
+
+        return {
+            month: monthValue,
+            rate,
+            company_name: COMPANY_NAME,
+            location: PAYROLL_LOCATION,
+            equipment: EQUIPMENT,
+            areas: areasOut,
+            grand_total: +grandTotal.toFixed(4),
+            saved_by: currentUser,
+            saved_at: new Date().toISOString()
+        };
+    }
+
+    // ----- SAVED REPORTS LIST (max 60 rows kept) -----
+    const MAX_SNAPSHOTS = 60;
+
+    async function refreshSnapshotsList() {
+        const { data, error } = await _supabase.from('payroll_snapshots')
+            .select('*')
+            .order('snapshot_month', { ascending: false })
+            .limit(MAX_SNAPSHOTS);
+        if (error) { console.error('fetchAllSnapshots:', error); allSnapshots = []; }
+        else allSnapshots = data || [];
+        renderSnapshotsList();
+    }
+
+    async function pruneOldSnapshots() {
+        // Delete any snapshots beyond the MAX_SNAPSHOTS most recent (by month, desc)
+        const { data, error } = await _supabase.from('payroll_snapshots')
+            .select('id, snapshot_month')
+            .order('snapshot_month', { ascending: false });
+        if (error || !data || data.length <= MAX_SNAPSHOTS) return;
+        const idsToDelete = data.slice(MAX_SNAPSHOTS).map(r => r.id);
+        const { error: delErr } = await _supabase.from('payroll_snapshots')
+            .delete()
+            .in('id', idsToDelete);
+        if (delErr) console.error('prune failed:', delErr);
+        else console.log(`Pruned ${idsToDelete.length} old snapshot(s).`);
+    }
+
+    function renderSnapshotsList() {
+        const tbody = document.getElementById('snapshotsList');
+        if (allSnapshots.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-list">Tiada laporan tersimpan.</td></tr>';
+            return;
+        }
+        const rows = allSnapshots.map(snap => {
+            const d = snap.snapshot_data || {};
+            const monthLabel = formatMonthLabel(snap.snapshot_month);
+            const total = Number(d.grand_total || 0);
+            const savedAt = new Date(snap.updated_at || snap.created_at).toLocaleString('ms-MY');
+            const savedBy = snap.saved_by || '-';
+            return `
+                <tr>
+                    <td><strong>${monthLabel}</strong></td>
+                    <td class="num">${fmtMoney(total)}</td>
+                    <td style="font-size:12px; color:#666;">${savedAt}</td>
+                    <td style="font-size:12px; color:#666;">${savedBy}</td>
+                    <td><button class="btn-pdf" onclick="downloadPDF('${snap.snapshot_month}')">📄 PDF</button></td>
+                </tr>`;
+        });
+        tbody.innerHTML = rows.join('');
+    }
+
+    // ----- PDF PREVIEW + DOWNLOAD -----
+    let previewSnapshot = null;
+
+    function downloadPDF(monthValue) {
+        const snap = allSnapshots.find(s => s.snapshot_month === monthValue);
+        if (!snap) { alert('Laporan tidak dijumpai.'); return; }
+        previewSnapshot = snap;
+        document.getElementById('pdfPreviewContent').innerHTML = buildPrintableClaimForm(snap);
+        document.getElementById('pdfPreviewModal').style.display = 'flex';
+    }
+
+    function closePDFPreview() {
+        document.getElementById('pdfPreviewModal').style.display = 'none';
+        previewSnapshot = null;
+    }
+
+    async function confirmDownloadPDF() {
+        if (!previewSnapshot) return;
+        if (typeof html2pdf !== 'function') {
+            alert('PDF library tidak tersedia. Sila refresh halaman.');
+            return;
+        }
+
+        const btn = document.getElementById('btnDownloadPDF');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '⏳ Generating...';
+
+        const monthLabel = formatMonthLabel(previewSnapshot.snapshot_month).replace(/\s+/g, '_');
+        const filename = `Watering_Claim_${monthLabel}.pdf`;
+
+        try {
+            const element = document.getElementById('pdfPreviewContent');
+            await html2pdf().set({
+                margin: 10,
+                filename,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            }).from(element).save();
+            setTimeout(closePDFPreview, 500);
+        } catch (err) {
+            console.error('PDF generation:', err);
+            alert('Gagal menjana PDF: ' + (err.message || err));
+        } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    }
+
+    function getDaysInMonth(monthValue) {
+        const [year, month] = monthValue.split('-').map(Number);
+        return new Date(year, month, 0).getDate();
+    }
+
+    function buildPrintableClaimForm(snap) {
+        const d = snap.snapshot_data || {};
+        const monthLabel = formatMonthLabel(snap.snapshot_month);
+        const daysInMonth = getDaysInMonth(snap.snapshot_month);
+        const rate = d.rate ?? PAYROLL_RATE;
+
+        // ===== PAGE 1: Claim form =====
+        let no = 1;
+        const areaRows = ['BNN', 'UNN1', 'UNN2'].map(area => {
+            const a = (d.areas && d.areas[area]) || {};
+            return `
+                <tr>
+                    <td>${no++}</td>
+                    <td>${area} (${a.operator || ''})</td>
+                    <td>Bibit</td>
+                    <td class="num">${fmtNumber(a.total_unit || 0)}</td>
+                    <td class="num">${Number(rate).toFixed(4)}</td>
+                    <td class="num">${fmtMoney(a.area_subtotal || 0)}</td>
+                </tr>`;
+        }).join('');
+
+        const page1 = `
+            <h1>Watering Work Completion Claim Form</h1>
+            <table class="pf-metadata">
+                <tr><th>Company Name :</th><td>${d.company_name || COMPANY_NAME}</td></tr>
+                <tr><th>Location :</th><td>${d.location || PAYROLL_LOCATION}</td></tr>
+                <tr><th>Work Month :</th><td>${monthLabel}</td></tr>
+                <tr><th>Equipment :</th><td>${d.equipment || EQUIPMENT}</td></tr>
+            </table>
+            <table class="pf-table">
+                <thead>
+                    <tr>
+                        <th style="width:50px;">No.</th>
+                        <th>Completed work description</th>
+                        <th style="width:80px;">Unit</th>
+                        <th style="width:120px;">Total Unit</th>
+                        <th style="width:120px;">Rate/unit (RM)</th>
+                        <th style="width:130px;">Subtotal (RM)</th>
+                    </tr>
+                </thead>
+                <tbody>${areaRows}</tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="5" style="text-align:right;">Total Claim (RM):</td>
+                        <td class="num">${fmtMoney(d.grand_total || 0)}</td>
+                    </tr>
+                </tfoot>
+            </table>`;
+
+        // ===== PAGE 2: Achievement report =====
+        let grandSessions = 0;
+        let grandTarget = 0;
+        const areaSummaries = [];
+
+        let grandRainingRounds = 0;
+
+        const areaSections = ['BNN', 'UNN1', 'UNN2'].map(area => {
+            const a = (d.areas && d.areas[area]) || {};
+            const plots = a.plots || {};
+            const operator = a.operator || '';
+
+            let areaSessions = 0;
+            let areaTarget = 0;
+            let areaRainingRounds = 0;
+            const rows = Object.entries(plots).map(([plotName, p]) => {
+                const sessions = p.sessions || 0;
+                const targetPerDay = p.target_per_day || 0;
+                const rainingDays = p.raining_days || 0;
+                const target = targetPerDay * daysInMonth;
+                const rainingRounds = rainingDays * targetPerDay;
+                areaSessions += sessions;
+                areaTarget += target;
+                areaRainingRounds += rainingRounds;
+                const pct = target > 0 ? Math.round((sessions / target) * 100) : 0;
+                const rainPct = target > 0 ? Math.round((rainingRounds / target) * 100) : 0;
+                const greenWidth = Math.min(100, pct);
+                const redWidth = Math.max(0, Math.min(100 - greenWidth, rainPct));
+                const rainTxt = rainingDays > 0 ? ` <span style="color:#d9534f;">+${rainPct}% rain</span>` : '';
+                return `
+                    <div class="ach-row">
+                        <div class="ach-plot-name">${plotName}</div>
+                        <div class="ach-bar">
+                            <div class="ach-bar-fill" style="width: ${greenWidth}%;"></div>
+                            <div class="ach-bar-rain" style="width: ${redWidth}%;"></div>
+                        </div>
+                        <div class="ach-text">
+                            <span class="ach-pct">${pct}%</span>
+                            <span class="ach-rounds">${sessions}/${target}${rainingDays > 0 ? ` · 🌧${rainingDays}d` : ''}</span>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            const areaPct = areaTarget > 0 ? Math.round((areaSessions / areaTarget) * 100) : 0;
+            const areaRainPct = areaTarget > 0 ? Math.round((areaRainingRounds / areaTarget) * 100) : 0;
+            grandSessions += areaSessions;
+            grandTarget += areaTarget;
+            grandRainingRounds += areaRainingRounds;
+            areaSummaries.push({ area, operator, sessions: areaSessions, target: areaTarget, pct: areaPct, rainingRounds: areaRainingRounds, rainPct: areaRainPct });
+
+            const rainHint = areaRainingRounds > 0 ? ` <span style="color:#d9534f;">+ ${areaRainingRounds} rain</span>` : '';
+            return `
+                <div class="ach-section">
+                    <h3>${area} — ${operator} <span class="ach-area-total">Area total: ${areaPct}% (${areaSessions}/${areaTarget})${rainHint}</span></h3>
+                    ${rows}
+                </div>`;
+        }).join('');
+
+        const grandPct = grandTarget > 0 ? Math.round((grandSessions / grandTarget) * 100) : 0;
+        const grandRainPct = grandTarget > 0 ? Math.round((grandRainingRounds / grandTarget) * 100) : 0;
+
+        const summaryRows = areaSummaries.map(s => {
+            const greenWidth = Math.min(100, s.pct);
+            const redWidth = Math.max(0, Math.min(100 - greenWidth, s.rainPct));
+            const rainTxt = s.rainingRounds > 0 ? ` <span style="color:#d9534f; font-size:10px;">+${s.rainPct}%🌧</span>` : '';
+            return `
+                <div class="summary-row">
+                    <div class="summary-label">${s.area} — ${s.operator}</div>
+                    <div class="summary-bar-wrap">
+                        <div class="summary-bar-fill" style="width: ${greenWidth}%;"></div>
+                        <div class="summary-bar-rain" style="width: ${redWidth}%;"></div>
+                    </div>
+                    <div class="summary-text">
+                        <span class="summary-pct">${s.pct}%</span>${rainTxt}
+                        <span class="summary-rounds">${s.sessions}/${s.target}</span>
+                    </div>
+                </div>`;
+        }).join('');
+
+        const grandGreenWidth = Math.min(100, grandPct);
+        const grandRedWidth = Math.max(0, Math.min(100 - grandGreenWidth, grandRainPct));
+        const grandRainTxt = grandRainingRounds > 0 ? ` <span style="color:#ff8a8a;">+ ${grandRainPct}% rain (${grandRainingRounds})</span>` : '';
+        const page2 = `
+            <div class="page-break"></div>
+            <h1>Work Achievement Report</h1>
+            <p style="margin-bottom: 18px; color: #555;">Month: ${monthLabel} &nbsp;·&nbsp; Days in month: ${daysInMonth}</p>
+            ${areaSections}
+
+            <div class="summary-section">
+                <h2 style="margin: 0 0 10px 0; font-size: 15px;">Area Summary</h2>
+                ${summaryRows}
+            </div>
+
+            <div class="grand-total">
+                <div class="grand-header">
+                    <span>Overall Achievement</span>
+                    <span>${grandPct}%${grandRainTxt} <span class="grand-rounds">(${grandSessions}/${grandTarget} rounds)</span></span>
+                </div>
+                <div class="grand-bar">
+                    <div class="grand-bar-fill" style="width: ${grandGreenWidth}%;"></div>
+                    <div class="grand-bar-rain" style="width: ${grandRedWidth}%;"></div>
+                </div>
+            </div>`;
+
+        return page1 + page2;
     }
 
     function logout() {
