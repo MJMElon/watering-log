@@ -230,8 +230,10 @@
             const isIssue = row.issue_reason !== null;
             const isPartial = !isIssue && row.duration < 50;
             if (isIssue) {
-                totalIssueCount++;
-                issueTypes[row.issue_reason] = (issueTypes[row.issue_reason] || 0) + 1;
+                // Area-wide issues (plot_name = area code) count once per plot in that area
+                const multiplier = plotData[row.plot_name] ? plotData[row.plot_name].length : 1;
+                totalIssueCount += multiplier;
+                issueTypes[row.issue_reason] = (issueTypes[row.issue_reason] || 0) + multiplier;
             } else if (isPartial) {
                 partialCount++;
             } else {
@@ -284,6 +286,7 @@
                 const formattedDate = displayDateObj.toLocaleDateString('ms-MY');
                 const startTimeStr = row.start_time ? fmtTime(row.start_time) : '-';
                 const endTimeStr = row.end_time ? fmtTime(row.end_time) : '-';
+                const plotLabel = plotData[row.plot_name] ? `🌍 Semua ${row.plot_name}` : row.plot_name;
                 return `
                     <tr>
                         <td style="font-size: 13px;">
@@ -291,7 +294,7 @@
                             <small style="color:#999;">Mula:</small> <strong style="color:#28a745;">${startTimeStr}</strong><br>
                             <small style="color:#999;">Tamat:</small> <strong style="color:#28a745;">${endTimeStr}</strong>
                         </td>
-                        <td><strong>${row.plot_name}</strong></td>
+                        <td><strong>${plotLabel}</strong></td>
                         <td><span class="badge ${badgeClass}" style="font-size:10px; padding: 4px 8px;">${statusText}</span></td>
                         <td style="font-weight:bold;">${row.duration || 0} <small style="color:#999; font-weight:normal;">min</small></td>
                         <td style="color:#999; font-size:11px; vertical-align:middle;">${row.user_email ? row.user_email.split('@')[0] : '-'}</td>
@@ -328,7 +331,8 @@
             const dateStr = displayDateObj.toLocaleDateString('ms-MY');
             const mulaPart = row.start_time ? fmtTime(row.start_time) : '-';
             const tamatPart = row.end_time ? fmtTime(row.end_time) : '-';
-            const plotPart = (row.plot_name || '').replace(/,/g, '');
+            const plotDisplay = plotData[row.plot_name] ? `Semua ${row.plot_name}` : (row.plot_name || '');
+            const plotPart = plotDisplay.replace(/,/g, '');
             const userPart = (row.user_email ? row.user_email.split('@')[0] : '-').replace(/,/g, '');
             const durPart = String(row.duration || 0);
             csv += `${dateStr},${mulaPart},${tamatPart},${plotPart},${statusText},${durPart},${userPart}\n`;

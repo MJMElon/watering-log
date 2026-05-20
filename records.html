@@ -181,7 +181,7 @@
                     <small style="color:#999;">Mula:</small> <strong style="color:#28a745;">${startTimeStr}</strong><br>
                     <small style="color:#999;">Tamat:</small> <strong style="color:#28a745;">${endTimeStr}</strong>
                 </td>
-                <td class="col-plot"><strong>${row.plot_name}</strong></td>
+                <td class="col-plot"><strong>${['BNN','UNN1','UNN2'].includes(row.plot_name) ? '🌍 Semua ' + row.plot_name : row.plot_name}</strong></td>
                 <td class="col-status">${statusHTML}</td>
                 <td class="col-dur"><strong>${row.duration || 0}</strong><br><small style="color:#999;">min</small></td>
                 <td class="col-pic">

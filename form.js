@@ -144,11 +144,19 @@ function showHistoryTab(loc) {
 }
 
 // --- DROPDOWN LOGIC ---
-function syncPlotOptions(locId, plotId) {
+function syncPlotOptions(locId, plotId, includeAll) {
     const locValue = document.getElementById(locId).value;
     const plotDropdown = document.getElementById(plotId);
     plotDropdown.innerHTML = '<option value="">-- Pilih Plot --</option>';
     if (locValue && plotData[locValue]) {
+        if (includeAll) {
+            // Area-wide option: plot_name = area code (e.g. "BNN")
+            // Means "this issue affects every plot in the area"
+            const allOpt = document.createElement('option');
+            allOpt.value = locValue;
+            allOpt.text = `🌍 Semua Plot ${locValue}`;
+            plotDropdown.add(allOpt);
+        }
         plotData[locValue].forEach(plot => {
             let option = document.createElement("option");
             option.value = plot;

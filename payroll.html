@@ -51,17 +51,52 @@
         .area-header .area-summary { color: #777; font-size: 11px; width: 100%; margin-top: 2px; }
         .operator-input { padding: 4px 8px; border: 1px solid #cce0cc; border-radius: 4px; font-size: 13px; width: 130px; background: white; flex: 1 1 130px; min-width: 100px; }
         .operator-input:focus { border-color: var(--primary); outline: none; }
-        .area-body { padding: 8px 10px 12px; background: white; }
+        .area-body { padding: 8px 8px 12px; background: white; }
 
-        .plot-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .plot-table th, .plot-table td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align: left; }
-        .plot-table th { background: #fafafa; font-weight: bold; font-size: 12px; }
+        .plot-table { width: auto; border-collapse: collapse; font-size: 12px; table-layout: fixed; margin: 0 auto; }
+        .plot-table th, .plot-table td { border-bottom: 1px solid #eee; padding: 5px 4px; text-align: left; }
+        .plot-table th { background: #fafafa; font-weight: bold; font-size: 11px; vertical-align: top; }
+        .plot-table th:nth-child(1) { width: 32px; }
+        .plot-table th:nth-child(2) { width: 70px; text-align: right; }
+        .plot-table th:nth-child(3) { width: 70px; text-align: right; }
+        .plot-table th:nth-child(4) { width: 70px; }
+        .plot-table th:nth-child(5) { width: 75px; }
         .plot-table td.num { text-align: right; }
-        .plot-table input { width: 75px; padding: 5px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; text-align: right; box-sizing: border-box; }
-        .plot-table input.target-input { width: 55px; }
+        .plot-table input { width: 100%; padding: 4px 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; text-align: right; box-sizing: border-box; }
         .plot-table input:focus { border-color: var(--primary); outline: none; }
         .plot-table tr.no-sessions td { color: #aaa; }
         .plot-table tr.no-sessions input { background: #fafafa; }
+        .col-sub { display: block; font-weight: normal; color: #888; font-size: 10px; margin-top: 2px; }
+
+        @media (max-width: 600px) {
+            body { padding: 10px; }
+            .container { padding: 10px; }
+            .card { padding: 12px; }
+            .area-body { padding: 6px 6px 10px; }
+            .plot-table { width: 100%; }
+            .plot-table th:nth-child(1) { width: 28px; }
+            .plot-table th:nth-child(2) { width: 55px; }
+            .plot-table th:nth-child(3) { width: 55px; }
+            .plot-table th:nth-child(4) { width: 55px; }
+            .plot-table th:nth-child(5) { width: auto; }
+            .col-sub { display: none; }
+
+            /* PDF preview modal — compact for phone */
+            .modal-body { padding: 10px; }
+            #pdfPreviewContent { padding: 12px; }
+            #pdfPreviewContent h1 { font-size: 16px; margin-bottom: 12px; }
+            #pdfPreviewContent .pf-metadata { font-size: 10px; }
+            #pdfPreviewContent .pf-metadata th { width: 110px !important; padding: 5px 6px; }
+            #pdfPreviewContent .pf-metadata td { padding: 5px 6px; }
+            #pdfPreviewContent .pf-table { font-size: 9px; }
+            #pdfPreviewContent .pf-table th { padding: 4px 3px; font-size: 9px; }
+            #pdfPreviewContent .pf-table td { padding: 4px 3px; }
+            #pdfPreviewContent .pf-table th:nth-child(1) { width: 24px !important; }
+            #pdfPreviewContent .pf-table th:nth-child(3) { width: 38px !important; }
+            #pdfPreviewContent .pf-table th:nth-child(4) { width: 58px !important; }
+            #pdfPreviewContent .pf-table th:nth-child(5) { width: 50px !important; }
+            #pdfPreviewContent .pf-table th:nth-child(6) { width: 58px !important; }
+        }
 
         .save-row { text-align: center; margin: 15px 0 25px 0; }
         .btn-save { background: var(--primary); color: white; border: none; padding: 12px 28px; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; }
@@ -88,7 +123,7 @@
         .modal-header h2 { margin: 0; font-size: 17px; }
         .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #999; padding: 0 4px; line-height: 1; }
         .modal-close:hover { color: #333; }
-        .modal-body { padding: 20px; overflow-y: auto; flex: 1; background: #f9f9f9; }
+        .modal-body { padding: 20px; overflow: auto; flex: 1; background: #f9f9f9; }
         #pdfPreviewContent { background: white; padding: 25px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
         .modal-footer { padding: 12px 20px; border-top: 1px solid #eee; display: flex; gap: 10px; justify-content: flex-end; }
         .btn-cancel { background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; }
@@ -409,12 +444,16 @@
         const sessions = {};
         const rainingDateSets = {}; // { plot: Set of 'YYYY-MM-DD' strings }
         for (const r of (data || [])) {
-            // Raining day: any record with issue_reason = 'Hujan', dedupe by date per plot
+            // Raining day: any record with issue_reason = 'Hujan', dedupe by date per plot.
+            // If plot_name is an area code (e.g. 'BNN'), expand to every plot in that area.
             if (r.issue_reason === 'Hujan') {
                 const isoDate = (r.end_time || r.start_time || '').slice(0, 10);
                 if (isoDate) {
-                    if (!rainingDateSets[r.plot_name]) rainingDateSets[r.plot_name] = new Set();
-                    rainingDateSets[r.plot_name].add(isoDate);
+                    const plotsToMark = plotData[r.plot_name] || [r.plot_name];
+                    for (const plot of plotsToMark) {
+                        if (!rainingDateSets[plot]) rainingDateSets[plot] = new Set();
+                        rainingDateSets[plot].add(isoDate);
+                    }
                 }
                 continue;
             }
@@ -499,11 +538,11 @@
                         <table class="plot-table">
                             <thead>
                                 <tr>
-                                    <th style="width:35px;">Plot</th>
-                                    <th style="width:60px; text-align:right;">Successful<br><small style="font-weight:normal; color:#888;">(Rounds)</small></th>
-                                    <th style="width:60px; text-align:right;">Raining<br><small style="font-weight:normal; color:#888;">(Rounds)</small></th>
-                                    <th style="width:65px;">Target/day<br><small style="font-weight:normal; color:#888;">(Rounds)</small></th>
-                                    <th>Bibit<br><small style="font-weight:normal; color:#888;">(Qty)</small></th>
+                                    <th>Plot</th>
+                                    <th>Successful<span class="col-sub">(Rounds)</span></th>
+                                    <th>Raining<span class="col-sub">(Rounds)</span></th>
+                                    <th>Target<span class="col-sub">/day</span></th>
+                                    <th>Bibit<span class="col-sub">(Qty)</span></th>
                                 </tr>
                             </thead>
                             <tbody>${rows}</tbody>
