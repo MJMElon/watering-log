@@ -14,7 +14,8 @@
     <link rel="manifest" href="manifest.json">
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="plots.js"></script>
     <script src="payroll_config.js"></script>
     <script src="sw-register.js"></script>
@@ -83,20 +84,34 @@
 
             /* PDF preview modal — compact for phone */
             .modal-body { padding: 10px; }
-            #pdfPreviewContent { padding: 12px; }
-            #pdfPreviewContent h1 { font-size: 16px; margin-bottom: 12px; }
-            #pdfPreviewContent .pf-metadata { font-size: 10px; }
-            #pdfPreviewContent .pf-metadata th { width: 110px !important; padding: 5px 6px; }
-            #pdfPreviewContent .pf-metadata td { padding: 5px 6px; }
-            #pdfPreviewContent .pf-table { font-size: 9px; }
-            #pdfPreviewContent .pf-table th { padding: 4px 3px; font-size: 9px; }
-            #pdfPreviewContent .pf-table td { padding: 4px 3px; }
-            #pdfPreviewContent .pf-table th:nth-child(1) { width: 24px !important; }
-            #pdfPreviewContent .pf-table th:nth-child(3) { width: 38px !important; }
-            #pdfPreviewContent .pf-table th:nth-child(4) { width: 58px !important; }
-            #pdfPreviewContent .pf-table th:nth-child(5) { width: 50px !important; }
-            #pdfPreviewContent .pf-table th:nth-child(6) { width: 58px !important; }
+            .pdf-doc { padding: 12px; }
+            .pdf-doc h1 { font-size: 16px; margin-bottom: 12px; }
+            .pdf-doc .pf-metadata { font-size: 10px; }
+            .pdf-doc .pf-metadata th { width: 110px !important; padding: 5px 6px; }
+            .pdf-doc .pf-metadata td { padding: 5px 6px; }
+            .pdf-doc .pf-table { font-size: 9px; }
+            .pdf-doc .pf-table th { padding: 4px 3px; font-size: 9px; }
+            .pdf-doc .pf-table td { padding: 4px 3px; }
+            .pdf-doc .pf-table th:nth-child(1) { width: 24px !important; }
+            .pdf-doc .pf-table th:nth-child(3) { width: 38px !important; }
+            .pdf-doc .pf-table th:nth-child(4) { width: 58px !important; }
+            .pdf-doc .pf-table th:nth-child(5) { width: 50px !important; }
+            .pdf-doc .pf-table th:nth-child(6) { width: 58px !important; }
         }
+
+        .signatures-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+        .signature-col { padding: 10px 12px; border: 1px solid #e3eee3; border-radius: 6px; background: #fafafa; }
+        .signature-col .sig-label { display: block; font-weight: bold; font-size: 13px; color: #155724; margin-bottom: 8px; }
+        .signature-col input { width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; margin-bottom: 6px; box-sizing: border-box; }
+        .signature-col input:focus { border-color: var(--primary); outline: none; }
+
+        /* PDF: signature block on page 1 under the claim table */
+        .pdf-doc .signatures-pdf { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 32px; }
+        .pdf-doc .sig-col-pdf { font-size: 11px; }
+        .pdf-doc .sig-role { font-weight: bold; font-size: 12px; margin-bottom: 6px; }
+        .pdf-doc .sig-line { border-bottom: 1px solid #333; height: 90px; margin-bottom: 6px; }
+        .pdf-doc .sig-info { font-size: 11px; margin-bottom: 3px; }
+        .pdf-doc .sig-info .sig-key { font-weight: bold; color: #444; }
 
         .save-row { text-align: center; margin: 15px 0 25px 0; }
         .btn-save { background: var(--primary); color: white; border: none; padding: 12px 28px; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; }
@@ -111,6 +126,8 @@
         .empty-list { text-align: center; color: #999; padding: 30px; font-style: italic; }
         .btn-pdf { background: #d9534f; color: white; border: none; padding: 6px 12px; border-radius: 5px; font-size: 12px; font-weight: bold; cursor: pointer; }
         .btn-pdf:hover { background: #c9302c; }
+        .btn-delete { background: #6c757d; color: white; border: none; padding: 6px 10px; border-radius: 5px; font-size: 12px; cursor: pointer; }
+        .btn-delete:hover { background: #495057; }
 
         .warnings { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 12px 15px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; }
 
@@ -124,7 +141,7 @@
         .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #999; padding: 0 4px; line-height: 1; }
         .modal-close:hover { color: #333; }
         .modal-body { padding: 20px; overflow: auto; flex: 1; background: #f9f9f9; }
-        #pdfPreviewContent { background: white; padding: 25px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        .pdf-doc { background: white; padding: 25px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
         .modal-footer { padding: 12px 20px; border-top: 1px solid #eee; display: flex; gap: 10px; justify-content: flex-end; }
         .btn-cancel { background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; }
         .btn-cancel:hover { background: #5a6268; }
@@ -133,49 +150,48 @@
         .btn-download:disabled { background: #aaa; cursor: not-allowed; }
 
         /* Claim form styles (used inside the preview/PDF) */
-        #pdfPreviewContent h1 { margin: 0 0 20px 0; font-size: 22px; }
-        #pdfPreviewContent .pf-metadata { width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 13px; }
-        #pdfPreviewContent .pf-metadata th,
-        #pdfPreviewContent .pf-metadata td { border: 1px solid #999; padding: 8px 12px; }
-        #pdfPreviewContent .pf-metadata th { background: #f5f5f5; width: 220px; font-weight: bold; text-align: right; }
-        #pdfPreviewContent .pf-metadata td { text-align: center; }
-        #pdfPreviewContent .pf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        #pdfPreviewContent .pf-table th,
-        #pdfPreviewContent .pf-table td { border: 1px solid #999; padding: 8px; }
-        #pdfPreviewContent .pf-table th { background: #f5f5f5; font-weight: bold; text-align: left; }
-        #pdfPreviewContent .pf-table .num { text-align: right; }
-        #pdfPreviewContent .pf-table tfoot td { font-weight: bold; background: #fafafa; }
+        .pdf-doc h1 { margin: 0 0 20px 0; font-size: 22px; }
+        .pdf-doc .pf-metadata { width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 13px; }
+        .pdf-doc .pf-metadata th,
+        .pdf-doc .pf-metadata td { border: 1px solid #999; padding: 8px 12px; }
+        .pdf-doc .pf-metadata th { background: #f5f5f5; width: 220px; font-weight: bold; text-align: right; }
+        .pdf-doc .pf-metadata td { text-align: center; }
+        .pdf-doc .pf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .pdf-doc .pf-table th,
+        .pdf-doc .pf-table td { border: 1px solid #999; padding: 8px; }
+        .pdf-doc .pf-table th { background: #f5f5f5; font-weight: bold; text-align: left; }
+        .pdf-doc .pf-table .num { text-align: right; }
+        .pdf-doc .pf-table tfoot td { font-weight: bold; background: #fafafa; }
 
         /* Page 2: achievement view — horizontal progress bars */
-        #pdfPreviewContent .page-break { page-break-before: always; break-before: page; margin-top: 30px; padding-top: 20px; border-top: 2px dashed #ccc; }
-        #pdfPreviewContent .ach-section { margin-bottom: 16px; }
-        #pdfPreviewContent .ach-section h3 { margin: 12px 0 6px 0; font-size: 13px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-        #pdfPreviewContent .ach-area-total { font-size: 11px; color: #555; font-weight: normal; }
-        #pdfPreviewContent .ach-row { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
-        #pdfPreviewContent .ach-plot-name { width: 40px; font-size: 11px; font-weight: bold; color: #444; flex-shrink: 0; }
-        #pdfPreviewContent .ach-bar { flex: 1; height: 9px; background: #f0f0f0; border-radius: 3px; overflow: hidden; border: 1px solid #ddd; display: flex; }
-        #pdfPreviewContent .ach-bar-fill { height: 100%; background: #28a745; }
-        #pdfPreviewContent .ach-bar-rain { height: 100%; background: #d9534f; }
-        #pdfPreviewContent .ach-text { display: inline-flex; align-items: baseline; gap: 6px; min-width: 105px; font-size: 11px; flex-shrink: 0; justify-content: flex-end; }
-        #pdfPreviewContent .ach-pct { font-weight: bold; color: #155724; }
-        #pdfPreviewContent .ach-rounds { font-size: 9px; color: #999; }
+        .pdf-doc .ach-section { margin-bottom: 8px; }
+        .pdf-doc .ach-section h3 { margin: 6px 0 3px 0; font-size: 11px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+        .pdf-doc .ach-area-total { font-size: 10px; color: #555; font-weight: normal; }
+        .pdf-doc .ach-row { display: flex; align-items: center; gap: 5px; margin-bottom: 1px; line-height: 1.1; }
+        .pdf-doc .ach-plot-name { width: 32px; font-size: 9px; font-weight: bold; color: #444; flex-shrink: 0; }
+        .pdf-doc .ach-bar { flex: 1; height: 7px; background: #f0f0f0; border-radius: 3px; overflow: hidden; border: 1px solid #ddd; display: flex; }
+        .pdf-doc .ach-bar-fill { height: 100%; background: #28a745; }
+        .pdf-doc .ach-bar-rain { height: 100%; background: #f5a5a5; }
+        .pdf-doc .ach-text { display: inline-flex; align-items: baseline; gap: 5px; min-width: 90px; font-size: 9px; flex-shrink: 0; justify-content: flex-end; }
+        .pdf-doc .ach-pct { font-weight: bold; color: #155724; font-size: 10px; }
+        .pdf-doc .ach-rounds { font-size: 8px; color: #555; }
 
-        #pdfPreviewContent .summary-section { margin-top: 22px; }
-        #pdfPreviewContent .summary-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; background: #f9f9f9; margin-bottom: 6px; }
-        #pdfPreviewContent .summary-label { width: 170px; font-size: 12px; font-weight: bold; color: #333; flex-shrink: 0; }
-        #pdfPreviewContent .summary-bar-wrap { flex: 1; height: 12px; background: #ececec; border-radius: 4px; overflow: hidden; border: 1px solid #ccc; display: flex; }
-        #pdfPreviewContent .summary-bar-fill { height: 100%; background: #28a745; }
-        #pdfPreviewContent .summary-bar-rain { height: 100%; background: #d9534f; }
-        #pdfPreviewContent .summary-text { min-width: 130px; font-size: 12px; text-align: right; flex-shrink: 0; }
-        #pdfPreviewContent .summary-pct { font-size: 15px; font-weight: bold; color: #155724; }
-        #pdfPreviewContent .summary-rounds { font-size: 10px; color: #888; margin-left: 6px; }
+        .pdf-doc .summary-section { margin-top: 22px; }
+        .pdf-doc .summary-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; background: #f9f9f9; margin-bottom: 6px; }
+        .pdf-doc .summary-label { width: 170px; font-size: 12px; font-weight: bold; color: #333; flex-shrink: 0; }
+        .pdf-doc .summary-bar-wrap { flex: 1; height: 12px; background: #ececec; border-radius: 4px; overflow: hidden; border: 1px solid #ccc; display: flex; }
+        .pdf-doc .summary-bar-fill { height: 100%; background: #28a745; }
+        .pdf-doc .summary-bar-rain { height: 100%; background: #f5a5a5; }
+        .pdf-doc .summary-text { min-width: 130px; font-size: 12px; text-align: right; flex-shrink: 0; }
+        .pdf-doc .summary-pct { font-size: 15px; font-weight: bold; color: #155724; }
+        .pdf-doc .summary-rounds { font-size: 10px; color: #555; margin-left: 6px; }
 
-        #pdfPreviewContent .grand-total { margin-top: 14px; padding: 12px 15px; background: #155724; color: white; border-radius: 6px; }
-        #pdfPreviewContent .grand-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; font-size: 14px; font-weight: bold; }
-        #pdfPreviewContent .grand-rounds { font-size: 11px; opacity: 0.85; font-weight: normal; }
-        #pdfPreviewContent .grand-bar { height: 10px; background: rgba(255,255,255,0.2); border-radius: 4px; overflow: hidden; display: flex; }
-        #pdfPreviewContent .grand-bar-fill { height: 100%; background: white; }
-        #pdfPreviewContent .grand-bar-rain { height: 100%; background: #ff8a8a; }
+        .pdf-doc .grand-total { margin-top: 14px; padding: 12px 15px; background: #155724; color: white; border-radius: 6px; }
+        .pdf-doc .grand-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; font-size: 14px; font-weight: bold; }
+        .pdf-doc .grand-rounds { font-size: 11px; opacity: 0.85; font-weight: normal; }
+        .pdf-doc .grand-bar { height: 10px; background: rgba(255,255,255,0.2); border-radius: 4px; overflow: hidden; display: flex; }
+        .pdf-doc .grand-bar-fill { height: 100%; background: white; }
+        .pdf-doc .grand-bar-rain { height: 100%; background: #ff8a8a; }
     </style>
 </head>
 <body>
@@ -207,6 +223,31 @@
         </div>
     </div>
 
+    <div class="card">
+        <h3>Management Signatures</h3>
+        <p style="font-size:12px; color:#666; margin:-5px 0 12px 0;">Nilai ini disimpan secara global — sekali isi, sentiasa muncul setiap bulan.</p>
+        <div class="signatures-grid">
+            <div class="signature-col">
+                <span class="sig-label">Prepared by</span>
+                <input type="text" data-role="prepared_by" data-field="name" placeholder="Name" oninput="onSignatureInput(this)" onblur="onSignatureBlur(this)">
+                <input type="text" data-role="prepared_by" data-field="position" placeholder="Position" oninput="onSignatureInput(this)" onblur="onSignatureBlur(this)">
+                <input type="date" data-role="prepared_by" data-field="date" oninput="onSignatureInput(this)" onblur="onSignatureBlur(this)">
+            </div>
+            <div class="signature-col">
+                <span class="sig-label">Verified by</span>
+                <input type="text" data-role="verified_by" data-field="name" placeholder="Name" oninput="onSignatureInput(this)" onblur="onSignatureBlur(this)">
+                <input type="text" data-role="verified_by" data-field="position" placeholder="Position" oninput="onSignatureInput(this)" onblur="onSignatureBlur(this)">
+                <input type="date" data-role="verified_by" data-field="date" oninput="onSignatureInput(this)" onblur="onSignatureBlur(this)">
+            </div>
+            <div class="signature-col">
+                <span class="sig-label">Approved by</span>
+                <input type="text" data-role="approved_by" data-field="name" placeholder="Name" oninput="onSignatureInput(this)" onblur="onSignatureBlur(this)">
+                <input type="text" data-role="approved_by" data-field="position" placeholder="Position" oninput="onSignatureInput(this)" onblur="onSignatureBlur(this)">
+                <input type="date" data-role="approved_by" data-field="date" oninput="onSignatureInput(this)" onblur="onSignatureBlur(this)">
+            </div>
+        </div>
+    </div>
+
     <div class="save-row">
         <button id="saveBtn" class="btn-save" onclick="saveSnapshot()" disabled>💾 Save Payroll Report</button>
     </div>
@@ -221,7 +262,7 @@
                         <th style="text-align:right;">Total Claim (RM)</th>
                         <th>Disimpan</th>
                         <th>Oleh</th>
-                        <th style="width:100px;">Tindakan</th>
+                        <th style="width:130px;">Tindakan</th>
                     </tr>
                 </thead>
                 <tbody id="snapshotsList">
@@ -245,7 +286,7 @@
             <button class="modal-close" onclick="closePDFPreview()" title="Close">✕</button>
         </div>
         <div class="modal-body">
-            <div id="pdfPreviewContent"></div>
+            <div id="pdfPreviewContent" class="pdf-doc"></div>
         </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closePDFPreview()">Cancel</button>
@@ -270,6 +311,9 @@
     let seedlingsByPlot = {};
     let targetsByPlot = {};
     let operatorsByArea = {};
+    // Starts empty so the first loadMonth's flush doesn't overwrite DB rows with nulls.
+    // Populated from the DB on every loadMonth.
+    let signatures = {};
     let currentSnapshot = null;
     let allSnapshots = [];
 
@@ -335,6 +379,7 @@
     async function saveAllInputsToDB() {
         for (const plot in plotSaveTimers) clearTimeout(plotSaveTimers[plot]);
         for (const area in operatorSaveTimers) clearTimeout(operatorSaveTimers[area]);
+        for (const role in sigSaveTimers) clearTimeout(sigSaveTimers[role]);
 
         const now = new Date().toISOString();
 
@@ -355,12 +400,24 @@
                 updated_by: currentUser
             }));
 
+        const sigRows = Object.keys(signatures).map(role => ({
+            role,
+            person_name: signatures[role].name || null,
+            position: signatures[role].position || null,
+            sig_date: signatures[role].date || null,
+            updated_at: now,
+            updated_by: currentUser
+        }));
+
         const promises = [];
         if (seedlingRows.length > 0) {
             promises.push(_supabase.from('plot_seedlings').upsert(seedlingRows, { onConflict: 'plot_name' }));
         }
         if (operatorRows.length > 0) {
             promises.push(_supabase.from('area_operators').upsert(operatorRows, { onConflict: 'area_code' }));
+        }
+        if (sigRows.length > 0) {
+            promises.push(_supabase.from('management_signatures').upsert(sigRows, { onConflict: 'role' }));
         }
 
         if (promises.length > 0) {
@@ -402,6 +459,13 @@
             operatorsByArea[area] = inputs.operators[area] || AREA_OPERATORS[area] || '';
         }
 
+        signatures = {
+            prepared_by: (inputs.sigs && inputs.sigs.prepared_by) || { name: '', position: '', date: '' },
+            verified_by: (inputs.sigs && inputs.sigs.verified_by) || { name: '', position: '', date: '' },
+            approved_by: (inputs.sigs && inputs.sigs.approved_by) || { name: '', position: '', date: '' }
+        };
+        populateSignatureInputs();
+
         renderInputSection();
         renderSnapshotStatus();
         await refreshSnapshotsList();
@@ -410,14 +474,16 @@
 
     async function fetchCurrentInputs() {
         // Separate queries so a missing target_per_day column doesn't wipe seedling data
-        const [seedlingsRes, targetsRes, operatorsRes] = await Promise.all([
+        const [seedlingsRes, targetsRes, operatorsRes, sigsRes] = await Promise.all([
             _supabase.from('plot_seedlings').select('plot_name, seedling_count'),
             _supabase.from('plot_seedlings').select('plot_name, target_per_day'),
-            _supabase.from('area_operators').select('area_code, operator_name')
+            _supabase.from('area_operators').select('area_code, operator_name'),
+            _supabase.from('management_signatures').select('role, person_name, position, sig_date')
         ]);
         if (seedlingsRes.error) console.error('fetch seedlings:', seedlingsRes.error);
         if (targetsRes.error) console.error('fetch targets:', targetsRes.error);
         if (operatorsRes.error) console.error('fetch operators:', operatorsRes.error);
+        if (sigsRes.error) console.error('fetch signatures:', sigsRes.error);
 
         const seedlings = {};
         if (seedlingsRes.data) for (const r of seedlingsRes.data) seedlings[r.plot_name] = r.seedling_count || 0;
@@ -425,7 +491,11 @@
         if (targetsRes.data) for (const r of targetsRes.data) targets[r.plot_name] = r.target_per_day || 0;
         const operators = {};
         if (operatorsRes.data) for (const r of operatorsRes.data) operators[r.area_code] = r.operator_name || '';
-        return { seedlings, targets, operators };
+        const sigs = {};
+        if (sigsRes.data) for (const r of sigsRes.data) {
+            sigs[r.role] = { name: r.person_name || '', position: r.position || '', date: r.sig_date || '' };
+        }
+        return { seedlings, targets, operators, sigs };
     }
 
     async function fetchSessionsForMonth(monthValue) {
@@ -627,10 +697,59 @@
         setTimeout(() => { el.style.borderColor = original; }, 800);
     }
 
+    // ----- SIGNATURES (persistent across months, like bibit) -----
+    const sigSaveTimers = {};
+
+    function populateSignatureInputs() {
+        document.querySelectorAll('.signature-col input').forEach(el => {
+            const role = el.dataset.role;
+            const field = el.dataset.field;
+            if (signatures[role]) el.value = signatures[role][field] || '';
+        });
+    }
+
+    function onSignatureInput(el) {
+        const role = el.dataset.role;
+        const field = el.dataset.field;
+        if (!signatures[role]) signatures[role] = { name: '', position: '', date: '' };
+        signatures[role][field] = el.value;
+        clearTimeout(sigSaveTimers[role]);
+        sigSaveTimers[role] = setTimeout(() => saveSignatureNow(el, role), 500);
+    }
+    async function onSignatureBlur(el) {
+        const role = el.dataset.role;
+        clearTimeout(sigSaveTimers[role]);
+        await saveSignatureNow(el, role);
+    }
+    async function saveSignatureNow(el, role) {
+        const s = signatures[role] || {};
+        const { error } = await _supabase.from('management_signatures').upsert({
+            role,
+            person_name: s.name || null,
+            position: s.position || null,
+            sig_date: s.date || null,
+            updated_at: new Date().toISOString(),
+            updated_by: currentUser
+        }, { onConflict: 'role' });
+        if (error) console.error('save signature failed:', error);
+        flashSaveStatus(el, !error);
+    }
+
     // ----- SAVE PAYROLL REPORT (snapshot) -----
     async function saveSnapshot() {
         const monthValue = document.getElementById('monthPicker').value;
         if (!monthValue) return;
+
+        // If there's already a snapshot for this month, require typed "update" confirmation
+        if (currentSnapshot) {
+            const monthLabel = formatMonthLabel(monthValue);
+            const typed = window.prompt(`A payroll report for ${monthLabel} already exists.\n\nThis will OVERWRITE the previous payroll report. To proceed, type "update" below:`);
+            if (typed === null) return; // user cancelled
+            if (typed.trim().toLowerCase() !== 'update') {
+                alert('Confirmation failed. Payroll report was not updated.');
+                return;
+            }
+        }
 
         const saveBtn = document.getElementById('saveBtn');
         const originalText = saveBtn.textContent;
@@ -706,6 +825,7 @@
             location: PAYROLL_LOCATION,
             equipment: EQUIPMENT,
             areas: areasOut,
+            signatures: JSON.parse(JSON.stringify(signatures)),
             grand_total: +grandTotal.toFixed(4),
             saved_by: currentUser,
             saved_at: new Date().toISOString()
@@ -723,6 +843,35 @@
         if (error) { console.error('fetchAllSnapshots:', error); allSnapshots = []; }
         else allSnapshots = data || [];
         renderSnapshotsList();
+    }
+
+    async function deleteSnapshot(monthValue) {
+        const monthLabel = formatMonthLabel(monthValue);
+        const typed = window.prompt(`Delete payroll report for ${monthLabel}?\n\nThis action CANNOT be undone. To proceed, type "delete" below:`);
+        if (typed === null) return;
+        if (typed.trim().toLowerCase() !== 'delete') {
+            alert('Confirmation failed. Snapshot was not deleted.');
+            return;
+        }
+
+        const { error } = await _supabase.from('payroll_snapshots')
+            .delete()
+            .eq('snapshot_month', monthValue);
+        if (error) {
+            console.error('delete snapshot:', error);
+            alert('Failed to delete: ' + (error.message || error));
+            return;
+        }
+
+        // If we just deleted the currently-loaded month's snapshot, clear status
+        const currentMonth = document.getElementById('monthPicker').value;
+        if (currentMonth === monthValue) {
+            currentSnapshot = null;
+            renderSnapshotStatus();
+        }
+
+        await refreshSnapshotsList();
+        alert('Snapshot deleted ✓');
     }
 
     async function pruneOldSnapshots() {
@@ -757,7 +906,12 @@
                     <td class="num">${fmtMoney(total)}</td>
                     <td style="font-size:12px; color:#666;">${savedAt}</td>
                     <td style="font-size:12px; color:#666;">${savedBy}</td>
-                    <td><button class="btn-pdf" onclick="downloadPDF('${snap.snapshot_month}')">📄 PDF</button></td>
+                    <td>
+                        <div style="display:flex; gap:5px; align-items:center;">
+                            <button class="btn-pdf" onclick="downloadPDF('${snap.snapshot_month}')">📄 PDF</button>
+                            <button class="btn-delete" onclick="deleteSnapshot('${snap.snapshot_month}')" title="Delete snapshot">🗑️</button>
+                        </div>
+                    </td>
                 </tr>`;
         });
         tbody.innerHTML = rows.join('');
@@ -781,7 +935,7 @@
 
     async function confirmDownloadPDF() {
         if (!previewSnapshot) return;
-        if (typeof html2pdf !== 'function') {
+        if (typeof html2canvas !== 'function' || !window.jspdf || !window.jspdf.jsPDF) {
             alert('PDF library tidak tersedia. Sila refresh halaman.');
             return;
         }
@@ -793,24 +947,91 @@
 
         const monthLabel = formatMonthLabel(previewSnapshot.snapshot_month).replace(/\s+/g, '_');
         const filename = `Watering_Claim_${monthLabel}.pdf`;
+        const { jsPDF } = window.jspdf;
+
+        // Render claim form (page 1) and achievement (page 2+) as two separate
+        // off-screen elements so each has its own clean canvas — no shared
+        // height calculation, no awkward forced page breaks.
+        const renderHost = document.createElement('div');
+        renderHost.id = 'pdfRenderHost';
+        renderHost.style.cssText = 'position: fixed; left: 0; top: 0; width: 800px; background: white; z-index: -1; pointer-events: none; opacity: 0.01;';
+        document.body.appendChild(renderHost);
 
         try {
-            const element = document.getElementById('pdfPreviewContent');
-            await html2pdf().set({
-                margin: 10,
-                filename,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            }).from(element).save();
+            const sectionsHtml = buildPrintableSections(previewSnapshot);
+            const wrapStyle = 'background:white; padding:25px; box-sizing:border-box; width:800px; font-family:\'Segoe UI\',sans-serif;';
+
+            const renderOne = async (html, tightPad) => {
+                const pad = tightPad ? 'padding:18px;' : 'padding:25px;';
+                renderHost.innerHTML = '<div id="pdfRenderInner" class="pdf-doc" style="background:white; ' + pad + ' box-sizing:border-box; width:800px; font-family:\'Segoe UI\',sans-serif;">' + html + '</div>';
+                await new Promise(r => setTimeout(r, 50));
+                return await html2canvas(document.getElementById('pdfRenderInner'), {
+                    scale: 2, backgroundColor: '#ffffff', useCORS: true, windowWidth: 800
+                });
+            };
+
+            const canvas1 = await renderOne(sectionsHtml.page1, false);
+            const canvas2 = await renderOne(sectionsHtml.page2, true);
+
+            // Build PDF
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pageWidthMm = 210;
+            const pageHeightMm = 297;
+            const marginMm = 10;
+            const contentWidthMm = pageWidthMm - 2 * marginMm;
+            const contentHeightMm = pageHeightMm - 2 * marginMm;
+
+            const placeImage = (canvas, addPage) => {
+                if (addPage) pdf.addPage();
+                const w = contentWidthMm;
+                const h = (canvas.height / canvas.width) * w;
+                if (h <= contentHeightMm) {
+                    // Fits on one page
+                    pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', marginMm, marginMm, w, h);
+                } else {
+                    // Spans multiple pages — use negative Y offsets for continuation
+                    let yPos = marginMm;
+                    let heightLeft = h;
+                    pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', marginMm, yPos, w, h);
+                    heightLeft -= contentHeightMm;
+                    while (heightLeft > 0) {
+                        pdf.addPage();
+                        yPos -= contentHeightMm;
+                        pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', marginMm, yPos, w, h);
+                        heightLeft -= contentHeightMm;
+                    }
+                }
+            };
+
+            // Page 1: claim form + signatures
+            placeImage(canvas1, false);
+            // Page 2: full achievement report (areas + summary + overall)
+            placeImage(canvas2, true);
+
+            pdf.save(filename);
             setTimeout(closePDFPreview, 500);
         } catch (err) {
             console.error('PDF generation:', err);
             alert('Gagal menjana PDF: ' + (err.message || err));
         } finally {
+            renderHost.remove();
             btn.disabled = false;
             btn.textContent = originalText;
         }
+    }
+
+    // Split into two HTML chunks: page1 = claim form + signatures; page2 = full achievement
+    // report (areas + summary + overall) on one page.
+    function buildPrintableSections(snap) {
+        const fullHtml = buildPrintableClaimForm(snap);
+        const h1Marker = '<h1';
+        const firstH1 = fullHtml.indexOf(h1Marker);
+        const secondH1 = fullHtml.indexOf(h1Marker, firstH1 + 1);
+        if (secondH1 < 0) return { page1: fullHtml, page2: '' };
+        return {
+            page1: fullHtml.slice(0, secondH1),
+            page2: fullHtml.slice(secondH1)
+        };
     }
 
     function getDaysInMonth(monthValue) {
@@ -839,6 +1060,20 @@
                 </tr>`;
         }).join('');
 
+        const sigs = d.signatures || signatures;
+        const sigBlock = (role, label) => {
+            const s = sigs[role] || {};
+            const fmtDate = s.date ? new Date(s.date).toLocaleDateString('en-MY') : '___________';
+            return `
+                <div class="sig-col-pdf">
+                    <div class="sig-role">${label}</div>
+                    <div class="sig-line"></div>
+                    <div class="sig-info"><span class="sig-key">Name:</span> ${s.name || '___________'}</div>
+                    <div class="sig-info"><span class="sig-key">Position:</span> ${s.position || '___________'}</div>
+                    <div class="sig-info"><span class="sig-key">Date:</span> ${fmtDate}</div>
+                </div>`;
+        };
+
         const page1 = `
             <h1>Watering Work Completion Claim Form</h1>
             <table class="pf-metadata">
@@ -865,7 +1100,12 @@
                         <td class="num">${fmtMoney(d.grand_total || 0)}</td>
                     </tr>
                 </tfoot>
-            </table>`;
+            </table>
+            <div class="signatures-pdf">
+                ${sigBlock('prepared_by', 'Prepared by')}
+                ${sigBlock('verified_by', 'Verified by')}
+                ${sigBlock('approved_by', 'Approved by')}
+            </div>`;
 
         // ===== PAGE 2: Achievement report =====
         let grandSessions = 0;
@@ -950,9 +1190,8 @@
         const grandRedWidth = Math.max(0, Math.min(100 - grandGreenWidth, grandRainPct));
         const grandRainTxt = grandRainingRounds > 0 ? ` <span style="color:#ff8a8a;">+ ${grandRainPct}% rain (${grandRainingRounds})</span>` : '';
         const page2 = `
-            <div class="page-break"></div>
-            <h1>Work Achievement Report</h1>
-            <p style="margin-bottom: 18px; color: #555;">Month: ${monthLabel} &nbsp;·&nbsp; Days in month: ${daysInMonth}</p>
+            <h1 style="font-size: 16px; margin: 0 0 6px 0;">Work Achievement Report</h1>
+            <p style="margin: 0 0 10px 0; color: #555; font-size: 10px;">Month: ${monthLabel} &nbsp;·&nbsp; Days in month: ${daysInMonth}</p>
             ${areaSections}
 
             <div class="summary-section">
