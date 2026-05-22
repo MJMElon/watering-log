@@ -84,7 +84,8 @@
 
             /* PDF preview modal — compact for phone */
             .modal-body { padding: 10px; }
-            .pdf-doc { padding: 12px; }
+            /* inline-block so the white card grows to fit table width — no more table spilling outside white background */
+            .pdf-doc { padding: 12px; display: inline-block; min-width: 100%; box-sizing: border-box; vertical-align: top; }
             .pdf-doc h1 { font-size: 16px; margin-bottom: 12px; }
             .pdf-doc .pf-metadata { font-size: 10px; }
             .pdf-doc .pf-metadata th { width: 110px !important; padding: 5px 6px; }
