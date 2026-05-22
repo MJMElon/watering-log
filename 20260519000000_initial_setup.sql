@@ -145,6 +145,33 @@ insert into public.management_signatures (role) values
 
 
 -- ============================================
+-- PAYROLL CONFIG (key/value)
+-- e.g. 'rate_per_unit' = '0.001'
+-- ============================================
+
+create table public.payroll_config (
+  config_key text not null,
+  config_value text,
+  updated_at timestamp with time zone not null default now(),
+  updated_by text,
+  constraint payroll_config_pkey primary key (config_key)
+) TABLESPACE pg_default;
+
+alter table public.payroll_config enable row level security;
+
+create policy "Authenticated users can read payroll_config"
+on public.payroll_config for select to authenticated using (true);
+create policy "Authenticated users can insert payroll_config"
+on public.payroll_config for insert to authenticated with check (true);
+create policy "Authenticated users can update payroll_config"
+on public.payroll_config for update to authenticated using (true);
+
+insert into public.payroll_config (config_key, config_value) values
+  ('rate_per_unit', '0.001')
+on conflict (config_key) do nothing;
+
+
+-- ============================================
 -- PAYROLL SNAPSHOTS
 -- One row per (month) holds the saved claim breakdown for that month.
 -- ============================================
