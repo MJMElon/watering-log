@@ -215,6 +215,14 @@
 
     <div id="warnings" class="warnings" style="display:none;"></div>
 
+    <div class="card">
+        <h3>Piece Rate Setting</h3>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <label style="font-weight:bold; font-size:13px;">Rate per unit (RM):</label>
+            <input type="number" step="0.0001" min="0" id="rateInput" placeholder="0.001" style="padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px; width:110px; box-sizing:border-box;" oninput="onRateInput(this)" onblur="onRateBlur(this)">
+        </div>
+    </div>
+
     <div class="card input-card">
         <h3>Input</h3>
         <p style="font-size:12px; color:#666; margin:-5px 0 12px 0;">Tukar nilai untuk auto-save. Tekan "Save Payroll Report" untuk menjana laporan bulanan.</p>
@@ -311,6 +319,7 @@
     let seedlingsByPlot = {};
     let targetsByPlot = {};
     let operatorsByArea = {};
+    let currentRate = null; // null = not loaded yet (avoids first-flush overwriting DB)
     // Starts empty so the first loadMonth's flush doesn't overwrite DB rows with nulls.
     // Populated from the DB on every loadMonth.
     let signatures = {};
@@ -380,6 +389,7 @@
         for (const plot in plotSaveTimers) clearTimeout(plotSaveTimers[plot]);
         for (const area in operatorSaveTimers) clearTimeout(operatorSaveTimers[area]);
         for (const role in sigSaveTimers) clearTimeout(sigSaveTimers[role]);
+        clearTimeout(rateSaveTimer);
 
         const now = new Date().toISOString();
 
@@ -418,6 +428,14 @@
         }
         if (sigRows.length > 0) {
             promises.push(_supabase.from('management_signatures').upsert(sigRows, { onConflict: 'role' }));
+        }
+        if (currentRate != null && !isNaN(currentRate)) {
+            promises.push(_supabase.from('payroll_config').upsert({
+                config_key: 'rate_per_unit',
+                config_value: String(currentRate),
+                updated_at: now,
+                updated_by: currentUser
+            }, { onConflict: 'config_key' }));
         }
 
         if (promises.length > 0) {
@@ -466,6 +484,10 @@
         };
         populateSignatureInputs();
 
+        currentRate = (inputs.rate != null && !isNaN(inputs.rate)) ? inputs.rate : PAYROLL_RATE;
+        const rateEl = document.getElementById('rateInput');
+        if (rateEl) rateEl.value = currentRate;
+
         renderInputSection();
         renderSnapshotStatus();
         await refreshSnapshotsList();
@@ -474,16 +496,18 @@
 
     async function fetchCurrentInputs() {
         // Separate queries so a missing target_per_day column doesn't wipe seedling data
-        const [seedlingsRes, targetsRes, operatorsRes, sigsRes] = await Promise.all([
+        const [seedlingsRes, targetsRes, operatorsRes, sigsRes, cfgRes] = await Promise.all([
             _supabase.from('plot_seedlings').select('plot_name, seedling_count'),
             _supabase.from('plot_seedlings').select('plot_name, target_per_day'),
             _supabase.from('area_operators').select('area_code, operator_name'),
-            _supabase.from('management_signatures').select('role, person_name, position, sig_date')
+            _supabase.from('management_signatures').select('role, person_name, position, sig_date'),
+            _supabase.from('payroll_config').select('config_key, config_value')
         ]);
         if (seedlingsRes.error) console.error('fetch seedlings:', seedlingsRes.error);
         if (targetsRes.error) console.error('fetch targets:', targetsRes.error);
         if (operatorsRes.error) console.error('fetch operators:', operatorsRes.error);
         if (sigsRes.error) console.error('fetch signatures:', sigsRes.error);
+        if (cfgRes.error) console.error('fetch payroll_config:', cfgRes.error);
 
         const seedlings = {};
         if (seedlingsRes.data) for (const r of seedlingsRes.data) seedlings[r.plot_name] = r.seedling_count || 0;
@@ -495,7 +519,12 @@
         if (sigsRes.data) for (const r of sigsRes.data) {
             sigs[r.role] = { name: r.person_name || '', position: r.position || '', date: r.sig_date || '' };
         }
-        return { seedlings, targets, operators, sigs };
+        let rate = null;
+        if (cfgRes.data) {
+            const row = cfgRes.data.find(r => r.config_key === 'rate_per_unit');
+            if (row && row.config_value) rate = parseFloat(row.config_value);
+        }
+        return { seedlings, targets, operators, sigs, rate };
     }
 
     async function fetchSessionsForMonth(monthValue) {
@@ -697,6 +726,30 @@
         setTimeout(() => { el.style.borderColor = original; }, 800);
     }
 
+    // ----- RATE per unit (persistent global) -----
+    let rateSaveTimer = null;
+    function onRateInput(el) {
+        const val = parseFloat(el.value);
+        if (isNaN(val) || val < 0) return;
+        currentRate = val;
+        clearTimeout(rateSaveTimer);
+        rateSaveTimer = setTimeout(() => saveRateNow(el), 500);
+    }
+    async function onRateBlur(el) {
+        clearTimeout(rateSaveTimer);
+        await saveRateNow(el);
+    }
+    async function saveRateNow(el) {
+        const { error } = await _supabase.from('payroll_config').upsert({
+            config_key: 'rate_per_unit',
+            config_value: String(currentRate),
+            updated_at: new Date().toISOString(),
+            updated_by: currentUser
+        }, { onConflict: 'config_key' });
+        if (error) console.error('save rate failed:', error);
+        flashSaveStatus(el, !error);
+    }
+
     // ----- SIGNATURES (persistent across months, like bibit) -----
     const sigSaveTimers = {};
 
@@ -793,7 +846,7 @@
     function buildSnapshotData(monthValue) {
         const areasOut = {};
         let grandTotal = 0;
-        const rate = PAYROLL_RATE;
+        const rate = (currentRate != null && !isNaN(currentRate)) ? currentRate : PAYROLL_RATE;
 
         for (const areaCode of ['BNN', 'UNN1', 'UNN2']) {
             const plotsIn = plotData[areaCode] || [];
