@@ -298,35 +298,39 @@
                 const rainPct = target > 0 ? Math.round((rainRounds / target) * 100) : 0;
                 const gw = Math.min(100, pct);
                 const rw = Math.max(0, Math.min(100 - gw, rainPct));
+                const rdHint = rd > 0 ? ` · 🌧${rd}h` : '';
                 return `
                     <div class="live-ach-row">
                         <div class="live-ach-plot">${plot}</div>
                         <div class="live-ach-bar"><div class="live-ach-fill" style="width:${gw}%;"></div><div class="live-ach-rain" style="width:${rw}%;"></div></div>
-                        <div class="live-ach-text"><span class="live-ach-pct">${pct}%</span><span class="live-ach-rounds">${s}/${fmtNumber(target)}</span></div>
+                        <div class="live-ach-text"><span class="live-ach-pct">${pct}%</span><span class="live-ach-rounds">${s}/${fmtNumber(target)}${rdHint}</span></div>
                     </div>`;
             }).join('');
 
             const areaPct = areaTarget > 0 ? Math.round((areaSessions / areaTarget) * 100) : 0;
             const areaRainPct = areaTarget > 0 ? Math.round((areaRain / areaTarget) * 100) : 0;
             grandSessions += areaSessions; grandTarget += areaTarget; grandRain += areaRain;
-            areaSummaries.push({ area, operator, sessions: areaSessions, target: areaTarget, pct: areaPct, rainPct: areaRainPct });
+            areaSummaries.push({ area, operator, sessions: areaSessions, target: areaTarget, rainingRounds: areaRain, pct: areaPct, rainPct: areaRainPct });
 
+            const areaRainHint = areaRain > 0 ? ` <span style="color:#d9534f;">+ ${areaRain} Hujan</span>` : '';
             return `
                 <div class="live-ach-section">
-                    <h4>${area} — ${operator}<span class="live-ach-area-total">${areaPct}% (${areaSessions}/${fmtNumber(areaTarget)})</span></h4>
+                    <h4>${area} — ${operator}<span class="live-ach-area-total">${areaPct}% (${areaSessions}/${fmtNumber(areaTarget)})${areaRainHint}</span></h4>
                     ${rows}
                 </div>`;
         }).join('');
 
         const grandPct = grandTarget > 0 ? Math.round((grandSessions / grandTarget) * 100) : 0;
+        const grandRainPct = grandTarget > 0 ? Math.round((grandRain / grandTarget) * 100) : 0;
         const summaryRows = areaSummaries.map(s => {
             const gw = Math.min(100, s.pct);
             const rw = Math.max(0, Math.min(100 - gw, s.rainPct));
+            const rainTxt = s.rainingRounds > 0 ? ` <span style="color:#d9534f; font-size:10px;">+${s.rainPct}% 🌧</span>` : '';
             return `
                 <div class="live-summary-row">
                     <div class="live-summary-label">${s.area} — ${s.operator}</div>
                     <div class="live-summary-bar"><div class="live-summary-fill" style="width:${gw}%;"></div><div class="live-summary-rain" style="width:${rw}%;"></div></div>
-                    <div class="live-summary-text"><strong>${s.pct}%</strong> <span>${s.sessions}/${fmtNumber(s.target)}</span></div>
+                    <div class="live-summary-text"><strong>${s.pct}%</strong>${rainTxt} <span>${s.sessions}/${fmtNumber(s.target)}</span></div>
                 </div>`;
         }).join('');
 
@@ -343,7 +347,7 @@
             <div class="live-summary-section">
                 <h4>Ringkasan Ikut Area</h4>
                 ${summaryRows}
-                <div class="live-grand-total"><span>Keseluruhan</span><span><strong>${grandPct}%</strong> <span style="opacity:0.85;">(${grandSessions}/${fmtNumber(grandTarget)})</span></span></div>
+                <div class="live-grand-total"><span>Keseluruhan</span><span><strong>${grandPct}%</strong>${grandRain > 0 ? ` <span style="color:#ff8a8a; font-size:12px;">+ ${grandRainPct}% Hujan (${grandRain})</span>` : ''} <span style="opacity:0.85;">(${grandSessions}/${fmtNumber(grandTarget)})</span></span></div>
             </div>`;
     }
 
