@@ -117,7 +117,7 @@
     </div>
 
     <div class="live-ach-card">
-        <h2><span class="live-dot"></span>Pencapaian Kerja Live <span style="font-size:12px; color:#666; font-weight:normal;">(auto-refresh every 60s)</span></h2>
+        <h2><span class="live-dot"></span>Pencapaian Kerja Live</h2>
         <div id="liveAchContent">
             <div class="live-ach-loading">Memuatkan…</div>
         </div>
@@ -335,15 +335,15 @@
 
         container.innerHTML = `
             <div class="live-ach-meta">
-                <span>Month: <strong>${monthName}</strong></span>
-                <span>Days: <strong>${daysInMonth}</strong></span>
-                <span class="live-ach-updated">Updated: ${updatedAt}</span>
+                <span>Bulan: <strong>${monthName}</strong></span>
+                <span>Hari: <strong>${daysInMonth}</strong></span>
+                <span class="live-ach-updated">Kemas kini: ${updatedAt}</span>
             </div>
             ${areaSections}
             <div class="live-summary-section">
-                <h4>Area Summary</h4>
+                <h4>Ringkasan Ikut Area</h4>
                 ${summaryRows}
-                <div class="live-grand-total"><span>Overall Achievement</span><span><strong>${grandPct}%</strong> <span style="opacity:0.85;">(${grandSessions}/${fmtNumber(grandTarget)})</span></span></div>
+                <div class="live-grand-total"><span>Keseluruhan</span><span><strong>${grandPct}%</strong> <span style="opacity:0.85;">(${grandSessions}/${fmtNumber(grandTarget)})</span></span></div>
             </div>`;
     }
 
