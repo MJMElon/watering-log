@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'siram-go-v62';
+const CACHE_VERSION = 'siram-go-v68';
 
 const SHELL_ASSETS = [
     'index.html',
@@ -39,6 +39,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
+    // Only handle http(s) — skip chrome-extension://, data:, blob:, etc.
+    // The Cache API rejects non-http(s) schemes with a TypeError.
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+
     // Skip Supabase database and auth calls — these must always go to network for fresh data.
     // Storage URLs (/storage/...) are allowed through so photos cache after first view.
     if (url.hostname.endsWith('supabase.co') &&
@@ -53,7 +57,7 @@ self.addEventListener('fetch', (event) => {
             return fetch(event.request).then((response) => {
                 if (response && response.status === 200 && response.type !== 'opaque') {
                     const clone = response.clone();
-                    caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone));
+                    caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone)).catch(() => { /* unsupported scheme or quota */ });
                 }
                 return response;
             }).catch(() => {
