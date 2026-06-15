@@ -102,6 +102,22 @@
         .live-grand-fill { height: 100%; background: white; }
         .live-grand-rain { height: 100%; background: #ff8a8a; }
         .live-ach-loading { text-align: center; color: #999; padding: 25px; font-style: italic; font-size: 13px; }
+
+        @media (max-width: 600px) {
+            .live-ach-card { padding: 12px 14px; }
+            .live-ach-card h2 { font-size: 15px; margin-bottom: 10px; }
+            .live-summary-row { padding: 5px 8px; gap: 5px; }
+            .live-summary-label { width: 95px; font-size: 10px; }
+            .live-summary-bar { height: 10px; }
+            .live-summary-text { min-width: 72px; font-size: 9px; }
+            .live-summary-text strong { font-size: 11px; }
+            .live-grand-total { padding: 8px 12px; }
+            .live-grand-header { font-size: 11px; }
+            .live-grand-total strong { font-size: 13px; }
+            .live-grand-bar { height: 8px; }
+            .live-summary-section h4 { font-size: 13px; }
+            .live-ach-section h4 { font-size: 12px; }
+        }
         .live-dot { display: inline-block; width: 11px; height: 11px; background: #d9534f; border-radius: 50%; margin-right: 8px; vertical-align: middle; animation: live-blink 1.2s ease-in-out infinite; box-shadow: 0 0 0 0 rgba(217, 83, 79, 0.7); }
         @keyframes live-blink {
             0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(217, 83, 79, 0.7); }
