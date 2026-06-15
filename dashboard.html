@@ -95,8 +95,12 @@
         .live-summary-text { min-width: 100px; font-size: 11px; text-align: right; flex-shrink: 0; }
         .live-summary-text strong { color: #155724; font-size: 14px; }
         .live-summary-text span { color: #555; }
-        .live-grand-total { margin-top: 10px; padding: 10px 15px; background: #155724; color: white; border-radius: 6px; display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; flex-wrap: wrap; gap: 6px; }
+        .live-grand-total { margin-top: 10px; padding: 10px 15px; background: #155724; color: white; border-radius: 6px; }
+        .live-grand-header { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
         .live-grand-total strong { font-size: 16px; }
+        .live-grand-bar { height: 10px; background: rgba(255,255,255,0.2); border-radius: 4px; overflow: hidden; display: flex; }
+        .live-grand-fill { height: 100%; background: white; }
+        .live-grand-rain { height: 100%; background: #ff8a8a; }
         .live-ach-loading { text-align: center; color: #999; padding: 25px; font-style: italic; font-size: 13px; }
         .live-dot { display: inline-block; width: 11px; height: 11px; background: #d9534f; border-radius: 50%; margin-right: 8px; vertical-align: middle; animation: live-blink 1.2s ease-in-out infinite; box-shadow: 0 0 0 0 rgba(217, 83, 79, 0.7); }
         @keyframes live-blink {
@@ -347,7 +351,16 @@
             <div class="live-summary-section">
                 <h4>Ringkasan Ikut Area</h4>
                 ${summaryRows}
-                <div class="live-grand-total"><span>Keseluruhan</span><span><strong>${grandPct}%</strong>${grandRain > 0 ? ` <span style="color:#ff8a8a; font-size:12px;">+ ${grandRainPct}% Hujan (${grandRain})</span>` : ''} <span style="opacity:0.85;">(${grandSessions}/${fmtNumber(grandTarget)})</span></span></div>
+                <div class="live-grand-total">
+                    <div class="live-grand-header">
+                        <span>Keseluruhan</span>
+                        <span><strong>${grandPct}%</strong>${grandRain > 0 ? ` <span style="color:#ff8a8a; font-size:12px;">+ ${grandRainPct}% Hujan (${grandRain})</span>` : ''} <span style="opacity:0.85;">(${grandSessions}/${fmtNumber(grandTarget)})</span></span>
+                    </div>
+                    <div class="live-grand-bar">
+                        <div class="live-grand-fill" style="width:${Math.min(100, grandPct)}%;"></div>
+                        <div class="live-grand-rain" style="width:${Math.max(0, Math.min(100 - Math.min(100, grandPct), grandRainPct))}%;"></div>
+                    </div>
+                </div>
             </div>`;
     }
 
