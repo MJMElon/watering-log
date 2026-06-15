@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'siram-go-v68';
+const CACHE_VERSION = 'siram-go-v69';
 
 const SHELL_ASSETS = [
     'index.html',
