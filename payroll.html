@@ -110,20 +110,27 @@
             .pdf-doc .ach-pct { font-size: 9px; }
             .pdf-doc .ach-rounds { font-size: 7px; }
 
-            /* Area Summary — phone-compact */
+            /* Area Summary — phone: stack label/text on top, bar full-width below */
             .pdf-doc .summary-section h2 { font-size: 12px !important; }
-            .pdf-doc .summary-row { padding: 5px 8px; gap: 6px; margin-bottom: 4px; }
-            .pdf-doc .summary-label { width: 100px; font-size: 10px; }
-            .pdf-doc .summary-bar-wrap { height: 10px; }
-            .pdf-doc .summary-text { min-width: 80px; font-size: 9px; }
-            .pdf-doc .summary-pct { font-size: 11px; }
+            .pdf-doc .summary-row {
+                display: grid !important;
+                grid-template-areas: "label text" "bar bar";
+                grid-template-columns: 1fr auto;
+                gap: 4px 8px;
+                padding: 6px 10px;
+                margin-bottom: 4px;
+            }
+            .pdf-doc .summary-label { grid-area: label; width: auto !important; font-size: 11px; }
+            .pdf-doc .summary-bar-wrap { grid-area: bar; height: 11px !important; flex: none; }
+            .pdf-doc .summary-text { grid-area: text; min-width: auto !important; font-size: 9px; }
+            .pdf-doc .summary-pct { font-size: 12px; }
             .pdf-doc .summary-rounds { font-size: 9px; }
 
-            /* Overall Achievement banner — phone-compact */
-            .pdf-doc .grand-total { padding: 8px 12px; margin-top: 10px; }
-            .pdf-doc .grand-header { font-size: 11px; }
+            /* Overall Achievement banner — phone: stack header on top, bar below */
+            .pdf-doc .grand-total { padding: 10px 12px; margin-top: 10px; }
+            .pdf-doc .grand-header { font-size: 12px; flex-wrap: wrap; gap: 4px; }
             .pdf-doc .grand-rounds { font-size: 9px; }
-            .pdf-doc .grand-bar { height: 7px; }
+            .pdf-doc .grand-bar { height: 9px; margin-top: 2px; }
 
             /* Signature block — keep readable */
             .pdf-doc .signatures-pdf { gap: 12px; margin-top: 20px; }
