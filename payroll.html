@@ -357,7 +357,14 @@
 
             if (error || !data) {
                 alert('Halaman ini hanya untuk admin.');
-                window.location.href = 'form.html';
+                // Send FCs to dashboard, everyone else to form
+                try {
+                    const fc = await _supabase.from('field_coordinators')
+                        .select('email').eq('email', currentUser).maybeSingle();
+                    window.location.href = fc.data ? 'dashboard.html' : 'form.html';
+                } catch (e) {
+                    window.location.href = 'form.html';
+                }
                 return;
             }
 

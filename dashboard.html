@@ -67,6 +67,42 @@
         .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 15px; padding: 10px; font-size: 13px; }
         .btn-page { background: var(--dark); color: white; border: none; padding: 8px 14px; border-radius: 6px; font-size: 14px; cursor: pointer; }
         .btn-page:disabled { background: #ccc; cursor: not-allowed; }
+
+        /* Live Work Achievement card */
+        .live-ach-card { background: white; padding: 18px 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 20px; border-left: 4px solid var(--primary); }
+        .live-ach-card h2 { margin: 0 0 12px 0; font-size: 17px; text-align: left; }
+        .live-ach-meta { display: flex; gap: 15px; font-size: 12px; color: #666; margin-bottom: 12px; flex-wrap: wrap; }
+        .live-ach-meta strong { color: #333; }
+        .live-ach-meta .live-ach-updated { margin-left: auto; color: #28a745; font-weight: bold; }
+        .live-ach-section { margin-bottom: 14px; }
+        .live-ach-section h4 { margin: 8px 0 6px 0; font-size: 13px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+        .live-ach-area-total { font-size: 11px; color: #555; font-weight: normal; }
+        .live-ach-row { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+        .live-ach-plot { width: 35px; font-size: 11px; font-weight: bold; color: #444; flex-shrink: 0; }
+        .live-ach-bar { flex: 1; height: 11px; background: #f0f0f0; border-radius: 3px; overflow: hidden; border: 1px solid #ddd; display: flex; }
+        .live-ach-fill { height: 100%; background: #28a745; }
+        .live-ach-rain { height: 100%; background: #f5a5a5; }
+        .live-ach-text { display: inline-flex; align-items: baseline; gap: 6px; min-width: 95px; font-size: 11px; flex-shrink: 0; justify-content: flex-end; }
+        .live-ach-pct { font-weight: bold; color: #155724; }
+        .live-ach-rounds { font-size: 9px; color: #555; }
+        .live-summary-section { margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee; }
+        .live-summary-section h4 { margin: 0 0 8px 0; font-size: 14px; }
+        .live-summary-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 5px; background: #f9f9f9; margin-bottom: 5px; }
+        .live-summary-label { width: 160px; font-size: 12px; font-weight: bold; flex-shrink: 0; }
+        .live-summary-bar { flex: 1; height: 14px; background: #ececec; border-radius: 4px; overflow: hidden; border: 1px solid #ccc; display: flex; }
+        .live-summary-fill { height: 100%; background: #28a745; }
+        .live-summary-rain { height: 100%; background: #f5a5a5; }
+        .live-summary-text { min-width: 100px; font-size: 11px; text-align: right; flex-shrink: 0; }
+        .live-summary-text strong { color: #155724; font-size: 14px; }
+        .live-summary-text span { color: #555; }
+        .live-grand-total { margin-top: 10px; padding: 10px 15px; background: #155724; color: white; border-radius: 6px; display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; flex-wrap: wrap; gap: 6px; }
+        .live-grand-total strong { font-size: 16px; }
+        .live-ach-loading { text-align: center; color: #999; padding: 25px; font-style: italic; font-size: 13px; }
+        .live-dot { display: inline-block; width: 11px; height: 11px; background: #d9534f; border-radius: 50%; margin-right: 8px; vertical-align: middle; animation: live-blink 1.2s ease-in-out infinite; box-shadow: 0 0 0 0 rgba(217, 83, 79, 0.7); }
+        @keyframes live-blink {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(217, 83, 79, 0.7); }
+            50% { opacity: 0.35; box-shadow: 0 0 0 5px rgba(217, 83, 79, 0); }
+        }
     </style>
 </head>
 <body>
@@ -76,7 +112,14 @@
         <h1>📊 Watering Performance Analytics</h1>
         <div style="display: flex; align-items: center; gap: 12px;">
             <span onclick="showUserBadgePopup(this)" style="color:#666; font-size:13px; cursor:pointer; user-select:none; white-space:nowrap;" title="Tap to show full email">👤 <span id="userBadge"></span></span>
-            <a href="form.html" class="nav-btn">🏠 Home</a>
+            <a id="homeBtn" href="form.html" class="nav-btn">🏠 Home</a>
+        </div>
+    </div>
+
+    <div class="live-ach-card">
+        <h2><span class="live-dot"></span>Pencapaian Kerja Live <span style="font-size:12px; color:#666; font-weight:normal;">(auto-refresh every 60s)</span></h2>
+        <div id="liveAchContent">
+            <div class="live-ach-loading">Memuatkan…</div>
         </div>
     </div>
 
@@ -94,6 +137,10 @@
             <div class="filter-item">
                 <label>Plot:</label>
                 <select id="plotSelect" onchange="runFilter()"><option value="ALL">Semua Plot</option></select>
+            </div>
+            <div class="filter-item">
+                <label>Pekerja:</label>
+                <select id="workerSelect" onchange="runFilter()"><option value="ALL">Semua Pekerja</option></select>
             </div>
             <button class="btn-export" onclick="downloadCSV()">📥 Export CSV</button>
         </div>
@@ -162,6 +209,167 @@
     let currentPage = 1;
     const recordsPerPage = 10;
 
+    // ----- LIVE WORK ACHIEVEMENT (current month, polling) -----
+    let liveAchConfig = null; // { targets, operators } cached once per page session
+    let liveAchPollTimer = null;
+    const LIVE_ACH_POLL_INTERVAL = 60000; // 60s
+
+    async function fetchLiveAchConfig() {
+        try {
+            const [seedRes, opsRes] = await Promise.all([
+                _supabase.from('plot_seedlings').select('plot_name, target_per_day'),
+                _supabase.from('area_operators').select('area_code, operator_name')
+            ]);
+            const targets = {};
+            if (seedRes.data) for (const r of seedRes.data) targets[r.plot_name] = r.target_per_day || 0;
+            const operators = {};
+            if (opsRes.data) for (const r of opsRes.data) operators[r.area_code] = r.operator_name || '';
+            return { targets, operators };
+        } catch (e) {
+            console.error('liveAch config:', e);
+            return { targets: {}, operators: {} };
+        }
+    }
+
+    async function fetchLiveAchSessions() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth() + 1;
+        const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
+        const nm = m === 12 ? 1 : m + 1;
+        const ny = m === 12 ? y + 1 : y;
+        const endDate = `${ny}-${String(nm).padStart(2, '0')}-01`;
+
+        const { data, error } = await _supabase.from('watering_logs')
+            .select('plot_name, duration, issue_reason, end_time, start_time')
+            .gte('end_time', startDate + 'T00:00:00')
+            .lt('end_time', endDate + 'T00:00:00');
+        if (error) {
+            console.error('liveAch sessions:', error);
+            return { sessions: {}, rainingDays: {} };
+        }
+
+        const sessions = {};
+        const rainingDateSets = {};
+        for (const r of (data || [])) {
+            if (r.issue_reason === 'Hujan') {
+                const isoDate = (r.end_time || r.start_time || '').slice(0, 10);
+                if (isoDate) {
+                    const plotsToMark = plotData[r.plot_name] || [r.plot_name];
+                    for (const p of plotsToMark) {
+                        if (!rainingDateSets[p]) rainingDateSets[p] = new Set();
+                        rainingDateSets[p].add(isoDate);
+                    }
+                }
+                continue;
+            }
+            if (r.issue_reason !== null) continue;
+            if ((r.duration || 0) < 50) continue;
+            sessions[r.plot_name] = (sessions[r.plot_name] || 0) + 1;
+        }
+        const rainingDays = {};
+        for (const plot in rainingDateSets) rainingDays[plot] = rainingDateSets[plot].size;
+        return { sessions, rainingDays };
+    }
+
+    function renderLiveAchievement(sessions, rainingDays) {
+        const container = document.getElementById('liveAchContent');
+        if (!container) return;
+        const { targets = {}, operators = {} } = liveAchConfig || {};
+        const now = new Date();
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const fmtNumber = (n) => Number(n).toLocaleString('en-MY');
+
+        let grandSessions = 0, grandTarget = 0, grandRain = 0;
+        const areaSummaries = [];
+
+        const areaSections = ['BNN', 'UNN1', 'UNN2'].map(area => {
+            const plots = plotData[area] || [];
+            const operator = operators[area] || '';
+            let areaSessions = 0, areaTarget = 0, areaRain = 0;
+            const rows = plots.map(plot => {
+                const s = sessions[plot] || 0;
+                const t = targets[plot] || 0;
+                const rd = rainingDays[plot] || 0;
+                const target = t * daysInMonth;
+                const rainRounds = rd * t;
+                areaSessions += s; areaTarget += target; areaRain += rainRounds;
+                const pct = target > 0 ? Math.round((s / target) * 100) : 0;
+                const rainPct = target > 0 ? Math.round((rainRounds / target) * 100) : 0;
+                const gw = Math.min(100, pct);
+                const rw = Math.max(0, Math.min(100 - gw, rainPct));
+                return `
+                    <div class="live-ach-row">
+                        <div class="live-ach-plot">${plot}</div>
+                        <div class="live-ach-bar"><div class="live-ach-fill" style="width:${gw}%;"></div><div class="live-ach-rain" style="width:${rw}%;"></div></div>
+                        <div class="live-ach-text"><span class="live-ach-pct">${pct}%</span><span class="live-ach-rounds">${s}/${fmtNumber(target)}</span></div>
+                    </div>`;
+            }).join('');
+
+            const areaPct = areaTarget > 0 ? Math.round((areaSessions / areaTarget) * 100) : 0;
+            const areaRainPct = areaTarget > 0 ? Math.round((areaRain / areaTarget) * 100) : 0;
+            grandSessions += areaSessions; grandTarget += areaTarget; grandRain += areaRain;
+            areaSummaries.push({ area, operator, sessions: areaSessions, target: areaTarget, pct: areaPct, rainPct: areaRainPct });
+
+            return `
+                <div class="live-ach-section">
+                    <h4>${area} — ${operator}<span class="live-ach-area-total">${areaPct}% (${areaSessions}/${fmtNumber(areaTarget)})</span></h4>
+                    ${rows}
+                </div>`;
+        }).join('');
+
+        const grandPct = grandTarget > 0 ? Math.round((grandSessions / grandTarget) * 100) : 0;
+        const summaryRows = areaSummaries.map(s => {
+            const gw = Math.min(100, s.pct);
+            const rw = Math.max(0, Math.min(100 - gw, s.rainPct));
+            return `
+                <div class="live-summary-row">
+                    <div class="live-summary-label">${s.area} — ${s.operator}</div>
+                    <div class="live-summary-bar"><div class="live-summary-fill" style="width:${gw}%;"></div><div class="live-summary-rain" style="width:${rw}%;"></div></div>
+                    <div class="live-summary-text"><strong>${s.pct}%</strong> <span>${s.sessions}/${fmtNumber(s.target)}</span></div>
+                </div>`;
+        }).join('');
+
+        const monthName = now.toLocaleDateString('en-MY', { month: 'short', year: 'numeric' });
+        const updatedAt = now.toLocaleTimeString('ms-MY');
+
+        container.innerHTML = `
+            <div class="live-ach-meta">
+                <span>Month: <strong>${monthName}</strong></span>
+                <span>Days: <strong>${daysInMonth}</strong></span>
+                <span class="live-ach-updated">Updated: ${updatedAt}</span>
+            </div>
+            ${areaSections}
+            <div class="live-summary-section">
+                <h4>Area Summary</h4>
+                ${summaryRows}
+                <div class="live-grand-total"><span>Overall Achievement</span><span><strong>${grandPct}%</strong> <span style="opacity:0.85;">(${grandSessions}/${fmtNumber(grandTarget)})</span></span></div>
+            </div>`;
+    }
+
+    async function refreshLiveAchievement() {
+        try {
+            if (!liveAchConfig) liveAchConfig = await fetchLiveAchConfig();
+            const { sessions, rainingDays } = await fetchLiveAchSessions();
+            renderLiveAchievement(sessions, rainingDays);
+        } catch (e) {
+            console.error('refreshLiveAchievement:', e);
+        }
+    }
+
+    function startLiveAchievementPolling() {
+        // Initial fetch on page load
+        refreshLiveAchievement();
+        // Poll while tab is visible
+        liveAchPollTimer = setInterval(() => {
+            if (!document.hidden) refreshLiveAchievement();
+        }, LIVE_ACH_POLL_INTERVAL);
+        // Immediate refresh when tab becomes visible again
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) refreshLiveAchievement();
+        });
+    }
+
     function syncPlots() {
         const loc = document.getElementById('locSelect').value;
         const plotDropdown = document.getElementById('plotSelect');
@@ -193,7 +401,24 @@
         const { data, error } = await query;
         if (error) return console.error(error);
         fullData = data;
+        populateWorkerDropdown();
         runFilter();
+    }
+
+    function populateWorkerDropdown() {
+        const select = document.getElementById('workerSelect');
+        if (!select) return;
+        const current = select.value || 'ALL';
+        const workers = [...new Set(fullData.map(d => d.user_email).filter(Boolean))].sort();
+        select.innerHTML = '<option value="ALL">Semua Pekerja</option>';
+        workers.forEach(email => {
+            const opt = document.createElement('option');
+            opt.value = email;
+            opt.text = email.split('@')[0]; // show account name only
+            select.add(opt);
+        });
+        // Preserve previous selection if still valid
+        if (current !== 'ALL' && workers.includes(current)) select.value = current;
     }
 
     function runFilter() {
@@ -215,6 +440,9 @@
         
         if (loc !== "ALL") filtered = filtered.filter(d => d.plot_name.startsWith(loc) || (plotData[loc] && plotData[loc].includes(d.plot_name)));
         if (plot !== "ALL") filtered = filtered.filter(d => d.plot_name === plot);
+
+        const worker = document.getElementById('workerSelect').value;
+        if (worker !== "ALL") filtered = filtered.filter(d => d.user_email === worker);
 
         currentPage = 1;
         calculateStats(filtered);
@@ -366,13 +594,26 @@
         if (userBadgePopupTimer) { clearTimeout(userBadgePopupTimer); userBadgePopupTimer = null; }
     }
 
+    async function hideHomeIfFC() {
+        try {
+            const { data } = await _supabase.from('field_coordinators')
+                .select('email').eq('email', currentUser).maybeSingle();
+            if (data) {
+                const home = document.getElementById('homeBtn');
+                if (home) home.style.display = 'none';
+            }
+        } catch (e) { /* table missing or error — leave button visible */ }
+    }
+
     window.onload = () => {
         const badge = document.getElementById('userBadge');
         if (badge && currentUser) badge.textContent = currentUser.split('@')[0];
 
+        hideHomeIfFC();
         document.getElementById('startDate').value = getMonthStart();
         document.getElementById('endDate').value = getToday();
         loadData();
+        startLiveAchievementPolling();
     };
 
     async function logout() {

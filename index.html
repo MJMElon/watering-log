@@ -109,7 +109,15 @@
         } else {
             // 4. Store the email so form.html can display it in the logs
             localStorage.setItem('loggedInUser', data.user.email);
-            window.location.href = "form.html";
+
+            // Route Field Coordinators straight to the dashboard
+            let landing = 'form.html';
+            try {
+                const fc = await _supabase.from('field_coordinators')
+                    .select('email').eq('email', data.user.email).maybeSingle();
+                if (fc.data) landing = 'dashboard.html';
+            } catch (e) { /* table missing — default to form.html */ }
+            window.location.href = landing;
         }
     });
 </script>

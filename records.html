@@ -113,6 +113,16 @@
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyaHpsb25pb2d5cXp3eWphdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDAyODMsImV4cCI6MjA5MTY3NjI4M30.A6_fhzaOHVAForH7Ps7fyCCdHPsjDyEQj8GJyqLwhA0';
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
+    // Field Coordinator redirect — FCs only view dashboard
+    (async () => {
+        if (!currentUser) return;
+        try {
+            const { data } = await _supabase.from('field_coordinators')
+                .select('email').eq('email', currentUser).maybeSingle();
+            if (data) window.location.href = 'dashboard.html';
+        } catch (e) { /* table missing or error — proceed */ }
+    })();
+
     let allRecords = [];
     let currentPage = 1;
     const recordsPerPage = 30;
