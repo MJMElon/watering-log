@@ -29,15 +29,28 @@ create table public.admins (
   constraint admins_pkey primary key (email)
 ) TABLESPACE pg_default;
 
+create table public.field_coordinators (
+  email text not null,
+  created_at timestamp with time zone not null default now(),
+  constraint field_coordinators_pkey primary key (email)
+) TABLESPACE pg_default;
+
 
 -- ============================================
 -- ROW LEVEL SECURITY
 -- ============================================
 
 alter table public.admins enable row level security;
+alter table public.field_coordinators enable row level security;
 
 create policy "Authenticated users can read admins"
 on public.admins
+for select
+to authenticated
+using (true);
+
+create policy "Authenticated users can read field_coordinators"
+on public.field_coordinators
 for select
 to authenticated
 using (true);
