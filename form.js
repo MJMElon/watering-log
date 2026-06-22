@@ -9,13 +9,23 @@ let isSyncing = false;
 // 1. SECURITY CHECK
 const currentUser = localStorage.getItem('loggedInUser');
 if (!currentUser) {
-    window.location.href = "index.html"; 
+    window.location.href = "index.html";
 }
 
 // 2. CONFIGURATION
 const supabaseUrl = 'https://grhzloniogyqzwyjatze.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyaHpsb25pb2d5cXp3eWphdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDAyODMsImV4cCI6MjA5MTY3NjI4M30.A6_fhzaOHVAForH7Ps7fyCCdHPsjDyEQj8GJyqLwhA0';
 const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+// 2b. FIELD COORDINATOR REDIRECT — FCs only view dashboard, never the worker form
+(async () => {
+    if (!currentUser) return;
+    try {
+        const { data } = await _supabase.from('field_coordinators')
+            .select('email').eq('email', currentUser).maybeSingle();
+        if (data) window.location.href = 'dashboard.html';
+    } catch (e) { /* table missing or error — treat as non-FC, do nothing */ }
+})();
 
 let activeTimers = {};
 let currentPlotPending = "";
@@ -55,9 +65,130 @@ async function checkAdminAndShowPayrollButton() {
         if (data) {
             const btn = document.getElementById('payrollBtn');
             if (btn) btn.style.display = '';
+            // Also reveal Admin Insert button (it's display:none in CSS by default)
+            const insertBtn = document.getElementById('adminInsertBtn');
+            if (insertBtn) insertBtn.style.display = 'inline-block';
         }
     } catch (e) {
         console.warn('Admin check failed:', e);
+    }
+}
+
+// ===== Admin Insert Record modal =====
+function openAdminInsertModal() {
+    const m = document.getElementById('adminInsertModal');
+    if (m) m.style.display = 'flex';
+}
+function closeAdminInsertModal() {
+    const m = document.getElementById('adminInsertModal');
+    if (m) m.style.display = 'none';
+}
+
+function adminSyncPlots() {
+    const loc = document.getElementById('adminLokasi').value;
+    const plotSel = document.getElementById('adminPlot');
+    plotSel.innerHTML = '<option value="">— Pilih Plot —</option>';
+    if (!loc || !plotData[loc]) return;
+    // Area-wide option (issues affecting whole area)
+    const allOpt = document.createElement('option');
+    allOpt.value = loc;
+    allOpt.text = `🌍 Semua Plot ${loc}`;
+    plotSel.add(allOpt);
+    plotData[loc].forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.text = p;
+        plotSel.add(opt);
+    });
+}
+
+function adminUpdateDuration() {
+    const s = document.getElementById('adminStartTime').value;
+    const e = document.getElementById('adminEndTime').value;
+    const display = document.getElementById('adminDurationDisplay');
+    if (!s || !e) { display.style.display = 'none'; return; }
+    const ms = new Date(e) - new Date(s);
+    if (ms <= 0) {
+        display.innerHTML = '⚠️ Tamat mesti selepas Mula';
+        display.style.background = '#fff3cd';
+        display.style.color = '#856404';
+        display.style.display = '';
+        return;
+    }
+    const mins = Math.round(ms / 60000);
+    const status = mins >= 50 ? '✓ Berjaya (≥50 min)' : '⚠️ Separuh (<50 min)';
+    display.innerHTML = `Durasi: <strong>${mins} minit — ${status}</strong>`;
+    display.style.background = mins >= 50 ? '#f0f7f0' : '#fff8e1';
+    display.style.color = mins >= 50 ? '#155724' : '#856404';
+    display.style.display = '';
+}
+
+async function submitAdminRecord() {
+    const lokasi = document.getElementById('adminLokasi').value;
+    const plot = document.getElementById('adminPlot').value;
+    const startTime = document.getElementById('adminStartTime').value;
+    const endTime = document.getElementById('adminEndTime').value;
+    const issueReason = document.getElementById('adminIssueReason').value || null;
+    const startPhotoFile = document.getElementById('adminStartPhoto').files[0];
+    const endPhotoFile = document.getElementById('adminEndPhoto').files[0];
+
+    if (!lokasi) return alert('Sila pilih Lokasi.');
+    if (!plot) return alert('Sila pilih Plot.');
+    if (!startTime || !endTime) return alert('Sila isi Masa Mula dan Masa Tamat.');
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+    if (endDate <= startDate) return alert('Masa Tamat mesti selepas Masa Mula.');
+    const durationMins = Math.round((endDate - startDate) / 60000);
+
+    const btn = document.getElementById('adminSubmitBtn');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Memuat naik...';
+
+    try {
+        const ts = Date.now();
+        let startPhotoUrl = null, endPhotoUrl = null;
+
+        if (startPhotoFile) {
+            const path = `${ts}_${plot}_S.jpg`;
+            const { error: upErr } = await _supabase.storage.from('watering-photos').upload(path, startPhotoFile, { upsert: true });
+            if (upErr) throw new Error('Gambar mula upload gagal: ' + upErr.message);
+            startPhotoUrl = _supabase.storage.from('watering-photos').getPublicUrl(path).data.publicUrl;
+        }
+        if (endPhotoFile) {
+            const path = `${ts}_${plot}_E.jpg`;
+            const { error: upErr } = await _supabase.storage.from('watering-photos').upload(path, endPhotoFile, { upsert: true });
+            if (upErr) throw new Error('Gambar tamat upload gagal: ' + upErr.message);
+            endPhotoUrl = _supabase.storage.from('watering-photos').getPublicUrl(path).data.publicUrl;
+        }
+
+        const { error } = await _supabase.from('watering_logs').insert({
+            user_email: currentUser,
+            plot_name: plot,
+            start_time: startDate.toISOString(),
+            end_time: endDate.toISOString(),
+            duration: durationMins,
+            start_photo_url: startPhotoUrl,
+            end_photo_url: endPhotoUrl,
+            issue_reason: issueReason
+        });
+        if (error) throw error;
+
+        alert(`✓ Record disimpan untuk ${plot} (${durationMins} min).`);
+        document.getElementById('adminStartTime').value = '';
+        document.getElementById('adminEndTime').value = '';
+        document.getElementById('adminIssueReason').value = '';
+        document.getElementById('adminStartPhoto').value = '';
+        document.getElementById('adminEndPhoto').value = '';
+        document.getElementById('adminDurationDisplay').style.display = 'none';
+        closeAdminInsertModal();
+        fetchLatestRecords();
+    } catch (err) {
+        console.error('submitAdminRecord:', err);
+        alert('Gagal: ' + (err.message || err));
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
     }
 }
 
