@@ -220,9 +220,23 @@
         window.location.href = "index.html";
     }
     
-    const supabaseUrl = 'https://grhzloniogyqzwyjatze.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyaHpsb25pb2d5cXp3eWphdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDAyODMsImV4cCI6MjA5MTY3NjI4M30.A6_fhzaOHVAForH7Ps7fyCCdHPsjDyEQj8GJyqLwhA0';
+    const supabaseUrl = 'https://kibqjztozokohqmhqqqf.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpYnFqenRvem9rb2hxbWhxcXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMzQzNjIsImV4cCI6MjA4OTgxMDM2Mn0.J7qJUZhWXYf5b9oey4wXJkjdi66jomEMw_NeV9NWF7M';
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    // Session validity check — force re-login if stored session is from a different
+    // Supabase project (e.g. after the project migration).
+    (async () => {
+        if (!currentUser) return;
+        try {
+            const { data: { session } } = await _supabase.auth.getSession();
+            if (!session) {
+                localStorage.removeItem('loggedInUser');
+                alert('Sesi tamat. Sila log masuk semula.');
+                window.location.href = 'index.html';
+            }
+        } catch (e) { /* getSession failure — leave user alone */ }
+    })();
 
     let fullData = [];
     let filteredData = [];
@@ -237,8 +251,8 @@
     async function fetchLiveAchConfig() {
         try {
             const [seedRes, opsRes] = await Promise.all([
-                _supabase.from('plot_seedlings').select('plot_name, target_per_day'),
-                _supabase.from('area_operators').select('area_code, operator_name')
+                _supabase.from('watering_plot_seedlings').select('plot_name, target_per_day'),
+                _supabase.from('watering_area_operators').select('area_code, operator_name')
             ]);
             const targets = {};
             if (seedRes.data) for (const r of seedRes.data) targets[r.plot_name] = r.target_per_day || 0;
@@ -260,18 +274,30 @@
         const ny = m === 12 ? y + 1 : y;
         const endDate = `${ny}-${String(nm).padStart(2, '0')}-01`;
 
-        const { data, error } = await _supabase.from('watering_logs')
-            .select('plot_name, duration, issue_reason, end_time, start_time')
-            .gte('end_time', startDate + 'T00:00:00')
-            .lt('end_time', endDate + 'T00:00:00');
-        if (error) {
-            console.error('liveAch sessions:', error);
-            return { sessions: {}, rainingDays: {} };
+        // Supabase default response is capped at 1000 rows. Paginate to fetch
+        // the entire month, otherwise recent inserts get silently dropped.
+        const PAGE = 1000;
+        let allRows = [];
+        let from = 0;
+        for (;;) {
+            const { data, error } = await _supabase.from('watering_logs')
+                .select('plot_name, duration, issue_reason, end_time, start_time')
+                .gte('end_time', startDate + 'T00:00:00')
+                .lt('end_time', endDate + 'T00:00:00')
+                .order('id', { ascending: true })
+                .range(from, from + PAGE - 1);
+            if (error) {
+                console.error('liveAch sessions:', error);
+                return { sessions: {}, rainingDays: {} };
+            }
+            allRows = allRows.concat(data || []);
+            if (!data || data.length < PAGE) break;
+            from += PAGE;
         }
 
         const sessions = {};
         const rainingDateSets = {};
-        for (const r of (data || [])) {
+        for (const r of allRows) {
             if (r.issue_reason === 'Hujan') {
                 const isoDate = (r.end_time || r.start_time || '').slice(0, 10);
                 if (isoDate) {
@@ -427,13 +453,25 @@
         const start = document.getElementById('startDate').value;
         const end = document.getElementById('endDate').value;
 
-        let query = _supabase.from('watering_logs').select('*').order('end_time', { ascending: false });
-        if (start) query = query.gte('end_time', start + 'T00:00:00');
-        if (end) query = query.lte('end_time', end + 'T23:59:59');
+        // Paginate to bypass the 1000-row Supabase default cap, otherwise
+        // long date ranges miss the most recent rows.
+        const PAGE = 1000;
+        let allRows = [];
+        let from = 0;
+        for (;;) {
+            let query = _supabase.from('watering_logs').select('*')
+                .order('end_time', { ascending: false })
+                .range(from, from + PAGE - 1);
+            if (start) query = query.gte('end_time', start + 'T00:00:00');
+            if (end) query = query.lte('end_time', end + 'T23:59:59');
 
-        const { data, error } = await query;
-        if (error) return console.error(error);
-        fullData = data;
+            const { data, error } = await query;
+            if (error) return console.error(error);
+            allRows = allRows.concat(data || []);
+            if (!data || data.length < PAGE) break;
+            from += PAGE;
+        }
+        fullData = allRows;
         populateWorkerDropdown();
         runFilter();
     }
@@ -629,7 +667,7 @@
 
     async function hideHomeIfFC() {
         try {
-            const { data } = await _supabase.from('field_coordinators')
+            const { data } = await _supabase.from('watering_field_coordinators')
                 .select('email').eq('email', currentUser).maybeSingle();
             if (data) {
                 const home = document.getElementById('homeBtn');

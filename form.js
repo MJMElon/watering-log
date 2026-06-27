@@ -13,15 +13,30 @@ if (!currentUser) {
 }
 
 // 2. CONFIGURATION
-const supabaseUrl = 'https://grhzloniogyqzwyjatze.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyaHpsb25pb2d5cXp3eWphdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDAyODMsImV4cCI6MjA5MTY3NjI4M30.A6_fhzaOHVAForH7Ps7fyCCdHPsjDyEQj8GJyqLwhA0';
+const supabaseUrl = 'https://kibqjztozokohqmhqqqf.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpYnFqenRvem9rb2hxbWhxcXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMzQzNjIsImV4cCI6MjA4OTgxMDM2Mn0.J7qJUZhWXYf5b9oey4wXJkjdi66jomEMw_NeV9NWF7M';
 const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+// 2a. SESSION VALIDITY CHECK — force re-login if stored session is from a different
+// Supabase project (e.g. after the project migration). Pending records in Dexie
+// and active timers in localStorage['activeWateringSessions'] are preserved.
+(async () => {
+    if (!currentUser) return;
+    try {
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (!session) {
+            localStorage.removeItem('loggedInUser');
+            alert('Sesi tamat. Sila log masuk semula.');
+            window.location.href = 'index.html';
+        }
+    } catch (e) { /* getSession failure — don't risk worker flow, leave user alone */ }
+})();
 
 // 2b. FIELD COORDINATOR REDIRECT — FCs only view dashboard, never the worker form
 (async () => {
     if (!currentUser) return;
     try {
-        const { data } = await _supabase.from('field_coordinators')
+        const { data } = await _supabase.from('watering_field_coordinators')
             .select('email').eq('email', currentUser).maybeSingle();
         if (data) window.location.href = 'dashboard.html';
     } catch (e) { /* table missing or error — treat as non-FC, do nothing */ }
@@ -58,7 +73,7 @@ async function checkAdminAndShowPayrollButton() {
     if (!currentUser) return;
     try {
         const { data } = await _supabase
-            .from('admins')
+            .from('watering_admins')
             .select('email')
             .eq('email', currentUser)
             .maybeSingle();

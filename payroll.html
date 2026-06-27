@@ -349,9 +349,23 @@
         window.location.href = "index.html";
     }
 
-    const supabaseUrl = 'https://grhzloniogyqzwyjatze.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyaHpsb25pb2d5cXp3eWphdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDAyODMsImV4cCI6MjA5MTY3NjI4M30.A6_fhzaOHVAForH7Ps7fyCCdHPsjDyEQj8GJyqLwhA0';
+    const supabaseUrl = 'https://kibqjztozokohqmhqqqf.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpYnFqenRvem9rb2hxbWhxcXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMzQzNjIsImV4cCI6MjA4OTgxMDM2Mn0.J7qJUZhWXYf5b9oey4wXJkjdi66jomEMw_NeV9NWF7M';
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    // Session validity check — force re-login if stored session is from a different
+    // Supabase project (e.g. after the project migration).
+    (async () => {
+        if (!currentUser) return;
+        try {
+            const { data: { session } } = await _supabase.auth.getSession();
+            if (!session) {
+                localStorage.removeItem('loggedInUser');
+                alert('Sesi tamat. Sila log masuk semula.');
+                window.location.href = 'index.html';
+            }
+        } catch (e) { /* getSession failure — leave user alone */ }
+    })();
 
     // ----- STATE -----
     let sessionsByPlot = {};
@@ -392,13 +406,13 @@
     async function verifyAdminAccess() {
         try {
             const { data, error } = await _supabase
-                .from('admins').select('email').eq('email', currentUser).maybeSingle();
+                .from('watering_admins').select('email').eq('email', currentUser).maybeSingle();
 
             if (error || !data) {
                 alert('Halaman ini hanya untuk admin.');
                 // Send FCs to dashboard, everyone else to form
                 try {
-                    const fc = await _supabase.from('field_coordinators')
+                    const fc = await _supabase.from('watering_field_coordinators')
                         .select('email').eq('email', currentUser).maybeSingle();
                     window.location.href = fc.data ? 'dashboard.html' : 'form.html';
                 } catch (e) {
@@ -468,16 +482,16 @@
 
         const promises = [];
         if (seedlingRows.length > 0) {
-            promises.push(_supabase.from('plot_seedlings').upsert(seedlingRows, { onConflict: 'plot_name' }));
+            promises.push(_supabase.from('watering_plot_seedlings').upsert(seedlingRows, { onConflict: 'plot_name' }));
         }
         if (operatorRows.length > 0) {
-            promises.push(_supabase.from('area_operators').upsert(operatorRows, { onConflict: 'area_code' }));
+            promises.push(_supabase.from('watering_area_operators').upsert(operatorRows, { onConflict: 'area_code' }));
         }
         if (sigRows.length > 0) {
-            promises.push(_supabase.from('management_signatures').upsert(sigRows, { onConflict: 'role' }));
+            promises.push(_supabase.from('watering_management_signatures').upsert(sigRows, { onConflict: 'role' }));
         }
         if (currentRate != null && !isNaN(currentRate)) {
-            promises.push(_supabase.from('payroll_config').upsert({
+            promises.push(_supabase.from('watering_payroll_config').upsert({
                 config_key: 'rate_per_unit',
                 config_value: String(currentRate),
                 updated_at: now,
@@ -544,11 +558,11 @@
     async function fetchCurrentInputs() {
         // Separate queries so a missing target_per_day column doesn't wipe seedling data
         const [seedlingsRes, targetsRes, operatorsRes, sigsRes, cfgRes] = await Promise.all([
-            _supabase.from('plot_seedlings').select('plot_name, seedling_count'),
-            _supabase.from('plot_seedlings').select('plot_name, target_per_day'),
-            _supabase.from('area_operators').select('area_code, operator_name'),
-            _supabase.from('management_signatures').select('role, person_name, position, sig_date'),
-            _supabase.from('payroll_config').select('config_key, config_value')
+            _supabase.from('watering_plot_seedlings').select('plot_name, seedling_count'),
+            _supabase.from('watering_plot_seedlings').select('plot_name, target_per_day'),
+            _supabase.from('watering_area_operators').select('area_code, operator_name'),
+            _supabase.from('watering_management_signatures').select('role, person_name, position, sig_date'),
+            _supabase.from('watering_payroll_config').select('config_key, config_value')
         ]);
         if (seedlingsRes.error) console.error('fetch seedlings:', seedlingsRes.error);
         if (targetsRes.error) console.error('fetch targets:', targetsRes.error);
@@ -581,15 +595,27 @@
         const nextYear = month === 12 ? year + 1 : year;
         const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
-        const { data, error } = await _supabase.from('watering_logs')
-            .select('plot_name, duration, issue_reason, end_time, start_time')
-            .gte('end_time', startDate + 'T00:00:00')
-            .lt('end_time', endDate + 'T00:00:00');
-        if (error) { console.error('fetchSessionsForMonth:', error); return { sessions: {}, rainingDays: {} }; }
+        // Supabase default response is capped at 1000 rows. Paginate to fetch
+        // the entire month, otherwise recent inserts get silently dropped.
+        const PAGE = 1000;
+        let allRows = [];
+        let from = 0;
+        for (;;) {
+            const { data, error } = await _supabase.from('watering_logs')
+                .select('plot_name, duration, issue_reason, end_time, start_time')
+                .gte('end_time', startDate + 'T00:00:00')
+                .lt('end_time', endDate + 'T00:00:00')
+                .order('id', { ascending: true })
+                .range(from, from + PAGE - 1);
+            if (error) { console.error('fetchSessionsForMonth:', error); return { sessions: {}, rainingDays: {} }; }
+            allRows = allRows.concat(data || []);
+            if (!data || data.length < PAGE) break;
+            from += PAGE;
+        }
 
         const sessions = {};
         const rainingDateSets = {}; // { plot: Set of 'YYYY-MM-DD' strings }
-        for (const r of (data || [])) {
+        for (const r of allRows) {
             // Raining day: any record with issue_reason = 'Hujan', dedupe by date per plot.
             // If plot_name is an area code (e.g. 'BNN'), expand to every plot in that area.
             if (r.issue_reason === 'Hujan') {
@@ -615,7 +641,7 @@
     }
 
     async function fetchSnapshotForMonth(monthValue) {
-        const { data, error } = await _supabase.from('payroll_snapshots')
+        const { data, error } = await _supabase.from('watering_payroll_snapshots')
             .select('*').eq('snapshot_month', monthValue).maybeSingle();
         if (error) { console.error('fetchSnapshotForMonth:', error); return null; }
         return data;
@@ -732,7 +758,7 @@
     }
 
     async function savePlotNow(el, plot) {
-        const { error } = await _supabase.from('plot_seedlings').upsert({
+        const { error } = await _supabase.from('watering_plot_seedlings').upsert({
             plot_name: plot,
             seedling_count: seedlingsByPlot[plot] || 0,
             target_per_day: targetsByPlot[plot] || 0,
@@ -757,7 +783,7 @@
     async function saveOperatorNow(el, area) {
         const name = (operatorsByArea[area] || '').trim();
         if (!name) return;
-        const { error } = await _supabase.from('area_operators').upsert({
+        const { error } = await _supabase.from('watering_area_operators').upsert({
             area_code: area,
             operator_name: name,
             updated_at: new Date().toISOString(),
@@ -787,7 +813,7 @@
         await saveRateNow(el);
     }
     async function saveRateNow(el) {
-        const { error } = await _supabase.from('payroll_config').upsert({
+        const { error } = await _supabase.from('watering_payroll_config').upsert({
             config_key: 'rate_per_unit',
             config_value: String(currentRate),
             updated_at: new Date().toISOString(),
@@ -823,7 +849,7 @@
     }
     async function saveSignatureNow(el, role) {
         const s = signatures[role] || {};
-        const { error } = await _supabase.from('management_signatures').upsert({
+        const { error } = await _supabase.from('watering_management_signatures').upsert({
             role,
             person_name: s.name || null,
             position: s.position || null,
@@ -866,7 +892,7 @@
             updated_at: now
         };
 
-        const { error } = await _supabase.from('payroll_snapshots')
+        const { error } = await _supabase.from('watering_payroll_snapshots')
             .upsert(payload, { onConflict: 'snapshot_month' });
 
         if (error) {
@@ -936,7 +962,7 @@
     const MAX_SNAPSHOTS = 60;
 
     async function refreshSnapshotsList() {
-        const { data, error } = await _supabase.from('payroll_snapshots')
+        const { data, error } = await _supabase.from('watering_payroll_snapshots')
             .select('*')
             .order('snapshot_month', { ascending: false })
             .limit(MAX_SNAPSHOTS);
@@ -954,7 +980,7 @@
             return;
         }
 
-        const { error } = await _supabase.from('payroll_snapshots')
+        const { error } = await _supabase.from('watering_payroll_snapshots')
             .delete()
             .eq('snapshot_month', monthValue);
         if (error) {
@@ -976,12 +1002,12 @@
 
     async function pruneOldSnapshots() {
         // Delete any snapshots beyond the MAX_SNAPSHOTS most recent (by month, desc)
-        const { data, error } = await _supabase.from('payroll_snapshots')
+        const { data, error } = await _supabase.from('watering_payroll_snapshots')
             .select('id, snapshot_month')
             .order('snapshot_month', { ascending: false });
         if (error || !data || data.length <= MAX_SNAPSHOTS) return;
         const idsToDelete = data.slice(MAX_SNAPSHOTS).map(r => r.id);
-        const { error: delErr } = await _supabase.from('payroll_snapshots')
+        const { error: delErr } = await _supabase.from('watering_payroll_snapshots')
             .delete()
             .in('id', idsToDelete);
         if (delErr) console.error('prune failed:', delErr);

@@ -84,8 +84,8 @@
     }
 
     // 1. Connection Details
-    const supabaseUrl = 'https://grhzloniogyqzwyjatze.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdyaHpsb25pb2d5cXp3eWphdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDAyODMsImV4cCI6MjA5MTY3NjI4M30.A6_fhzaOHVAForH7Ps7fyCCdHPsjDyEQj8GJyqLwhA0';
+    const supabaseUrl = 'https://kibqjztozokohqmhqqqf.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpYnFqenRvem9rb2hxbWhxcXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMzQzNjIsImV4cCI6MjA4OTgxMDM2Mn0.J7qJUZhWXYf5b9oey4wXJkjdi66jomEMw_NeV9NWF7M';
 
     // 2. Initialize with a unique name to avoid naming conflicts
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
@@ -113,7 +113,7 @@
             // Route Field Coordinators straight to the dashboard
             let landing = 'form.html';
             try {
-                const fc = await _supabase.from('field_coordinators')
+                const fc = await _supabase.from('watering_field_coordinators')
                     .select('email').eq('email', data.user.email).maybeSingle();
                 if (fc.data) landing = 'dashboard.html';
             } catch (e) { /* table missing — default to form.html */ }
