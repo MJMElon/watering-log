@@ -123,6 +123,8 @@
             0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(217, 83, 79, 0.7); }
             50% { opacity: 0.35; box-shadow: 0 0 0 5px rgba(217, 83, 79, 0); }
         }
+        .live-dot.offline { background: #888; animation: none; box-shadow: none; }
+        .live-ach-cache-tag { color: #888; font-style: italic; font-weight: normal; }
     </style>
 </head>
 <body>
@@ -318,13 +320,18 @@
         return { sessions, rainingDays };
     }
 
-    function renderLiveAchievement(sessions, rainingDays) {
+    function renderLiveAchievement(sessions, rainingDays, fetchedAtIso, isCached) {
         const container = document.getElementById('liveAchContent');
         if (!container) return;
         const { targets = {}, operators = {} } = liveAchConfig || {};
         const now = new Date();
+        const fetchedAt = fetchedAtIso ? new Date(fetchedAtIso) : now;
         const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
         const fmtNumber = (n) => Number(n).toLocaleString('en-MY');
+
+        // Toggle the header dot between live (red, blinking) and offline (gray, static)
+        const dot = document.querySelector('.live-ach-card .live-dot');
+        if (dot) dot.classList.toggle('offline', !!isCached);
 
         let grandSessions = 0, grandTarget = 0, grandRain = 0;
         const areaSummaries = [];
@@ -381,13 +388,17 @@
         }).join('');
 
         const monthName = now.toLocaleDateString('en-MY', { month: 'short', year: 'numeric' });
-        const updatedAt = now.toLocaleTimeString('ms-MY');
+        const sameDay = fetchedAt.toDateString() === now.toDateString();
+        const updatedAt = sameDay
+            ? fetchedAt.toLocaleTimeString('ms-MY')
+            : fetchedAt.toLocaleString('ms-MY', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const cacheTag = isCached ? ' <span class="live-ach-cache-tag">(Cache)</span>' : '';
 
         container.innerHTML = `
             <div class="live-ach-meta">
                 <span>Bulan: <strong>${monthName}</strong></span>
                 <span>Hari: <strong>${daysInMonth}</strong></span>
-                <span class="live-ach-updated">Kemas kini: ${updatedAt}</span>
+                <span class="live-ach-updated">Kemas kini: ${updatedAt}${cacheTag}</span>
             </div>
             ${areaSections}
             <div class="live-summary-section">
@@ -406,18 +417,51 @@
             </div>`;
     }
 
+    // Persist last successful payload so the card works offline.
+    const LIVE_ACH_CACHE_KEY = 'liveAchCache_v1';
+
+    function saveLiveAchCache(sessions, rainingDays) {
+        try {
+            localStorage.setItem(LIVE_ACH_CACHE_KEY, JSON.stringify({
+                fetchedAt: new Date().toISOString(),
+                config: liveAchConfig,
+                sessions,
+                rainingDays
+            }));
+        } catch (e) { /* quota / private mode — ignore, in-memory render still works */ }
+    }
+
+    function renderFromLiveAchCache() {
+        try {
+            const raw = localStorage.getItem(LIVE_ACH_CACHE_KEY);
+            if (!raw) return false;
+            const cached = JSON.parse(raw);
+            if (!cached || !cached.config) return false;
+            liveAchConfig = cached.config;
+            renderLiveAchievement(cached.sessions || {}, cached.rainingDays || {}, cached.fetchedAt, true);
+            return true;
+        } catch (e) { return false; }
+    }
+
     async function refreshLiveAchievement() {
         try {
             if (!liveAchConfig) liveAchConfig = await fetchLiveAchConfig();
             const { sessions, rainingDays } = await fetchLiveAchSessions();
-            renderLiveAchievement(sessions, rainingDays);
+            renderLiveAchievement(sessions, rainingDays, new Date().toISOString(), false);
+            saveLiveAchCache(sessions, rainingDays);
         } catch (e) {
             console.error('refreshLiveAchievement:', e);
+            // Network failed — fall back to cached data so the card still loads offline
+            if (!renderFromLiveAchCache()) {
+                const c = document.getElementById('liveAchContent');
+                if (c) c.innerHTML = '<div class="live-ach-loading">⚠️ Tiada data tersedia offline. Sambung ke internet untuk muat data buat kali pertama.</div>';
+            }
         }
     }
 
     function startLiveAchievementPolling() {
-        // Initial fetch on page load
+        // Render cached data first (instant, works offline) then refresh from network
+        renderFromLiveAchCache();
         refreshLiveAchievement();
         // Poll while tab is visible
         liveAchPollTimer = setInterval(() => {
@@ -427,6 +471,8 @@
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) refreshLiveAchievement();
         });
+        // Immediate refresh when network comes back online
+        window.addEventListener('online', refreshLiveAchievement);
     }
 
     function syncPlots() {
