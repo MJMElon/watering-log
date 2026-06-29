@@ -420,7 +420,17 @@
     // Persist last successful payload so the card works offline.
     const LIVE_ACH_CACHE_KEY = 'liveAchCache_v1';
 
+    function isMeaningfulConfig(cfg) {
+        if (!cfg) return false;
+        const t = Object.keys(cfg.targets || {}).length;
+        const o = Object.keys(cfg.operators || {}).length;
+        return t > 0 || o > 0;
+    }
+
     function saveLiveAchCache(sessions, rainingDays) {
+        // Only cache if we actually have meaningful config. Otherwise a failed fetch
+        // would overwrite good cached data with empties and offline mode would show 0s.
+        if (!isMeaningfulConfig(liveAchConfig)) return;
         try {
             localStorage.setItem(LIVE_ACH_CACHE_KEY, JSON.stringify({
                 fetchedAt: new Date().toISOString(),
@@ -436,7 +446,7 @@
             const raw = localStorage.getItem(LIVE_ACH_CACHE_KEY);
             if (!raw) return false;
             const cached = JSON.parse(raw);
-            if (!cached || !cached.config) return false;
+            if (!isMeaningfulConfig(cached?.config)) return false;
             liveAchConfig = cached.config;
             renderLiveAchievement(cached.sessions || {}, cached.rainingDays || {}, cached.fetchedAt, true);
             return true;
@@ -445,8 +455,16 @@
 
     async function refreshLiveAchievement() {
         try {
-            if (!liveAchConfig) liveAchConfig = await fetchLiveAchConfig();
-            const { sessions, rainingDays } = await fetchLiveAchSessions();
+            // Run config + sessions in parallel — cuts total wait roughly in half
+            const [freshConfig, sessionsResult] = await Promise.all([
+                fetchLiveAchConfig(),
+                fetchLiveAchSessions()
+            ]);
+            // Only replace config in memory if the fresh fetch returned meaningful data.
+            // A blank result (network blip, RLS hiccup) shouldn't wipe a previously good config.
+            if (isMeaningfulConfig(freshConfig)) liveAchConfig = freshConfig;
+            else if (!liveAchConfig) liveAchConfig = freshConfig;
+            const { sessions, rainingDays } = sessionsResult;
             renderLiveAchievement(sessions, rainingDays, new Date().toISOString(), false);
             saveLiveAchCache(sessions, rainingDays);
         } catch (e) {
