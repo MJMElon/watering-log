@@ -455,23 +455,43 @@
     }
 
     async function refreshLiveAchievement() {
+        // Skip network attempt entirely when offline — keeps the existing cached
+        // render visible instead of blanking it out to 0% across the board.
+        if (!navigator.onLine) {
+            // If nothing is currently rendered (first visit while offline), try cache once.
+            if (!liveAchConfig) renderFromLiveAchCache();
+            return;
+        }
+
         try {
             // Run config + sessions in parallel — cuts total wait roughly in half
             const [freshConfig, sessionsResult] = await Promise.all([
                 fetchLiveAchConfig(),
                 fetchLiveAchSessions()
             ]);
+            const sessions = sessionsResult.sessions || {};
+            const rainingDays = sessionsResult.rainingDays || {};
+
+            // The internal fetchers swallow network errors and return empty objects.
+            // If BOTH config and sessions came back empty, treat it as a soft failure
+            // (offline transition, RLS hiccup) and DO NOT overwrite the existing render.
+            const configEmpty = !isMeaningfulConfig(freshConfig);
+            const sessionsEmpty = Object.keys(sessions).length === 0 && Object.keys(rainingDays).length === 0;
+            if (configEmpty && sessionsEmpty) {
+                if (!liveAchConfig) renderFromLiveAchCache(); // first visit with no in-memory data → try cache
+                return;
+            }
+
             // Only replace config in memory if the fresh fetch returned meaningful data.
-            // A blank result (network blip, RLS hiccup) shouldn't wipe a previously good config.
             if (isMeaningfulConfig(freshConfig)) liveAchConfig = freshConfig;
             else if (!liveAchConfig) liveAchConfig = freshConfig;
-            const { sessions, rainingDays } = sessionsResult;
             renderLiveAchievement(sessions, rainingDays, new Date().toISOString(), false);
             saveLiveAchCache(sessions, rainingDays);
         } catch (e) {
             console.error('refreshLiveAchievement:', e);
-            // Network failed — fall back to cached data so the card still loads offline
-            if (!renderFromLiveAchCache()) {
+            // Network threw — fall back to cached data so the card still loads offline.
+            // Only show the "no data" message if there's nothing rendered yet.
+            if (!liveAchConfig && !renderFromLiveAchCache()) {
                 const c = document.getElementById('liveAchContent');
                 if (c) c.innerHTML = '<div class="live-ach-loading">⚠️ Tiada data tersedia offline. Sambung ke internet untuk muat data buat kali pertama.</div>';
             }
