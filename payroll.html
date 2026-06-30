@@ -353,10 +353,11 @@
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpYnFqenRvem9rb2hxbWhxcXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMzQzNjIsImV4cCI6MjA4OTgxMDM2Mn0.J7qJUZhWXYf5b9oey4wXJkjdi66jomEMw_NeV9NWF7M';
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-    // Session validity check — force re-login if stored session is from a different
-    // Supabase project (e.g. after the project migration).
+    // Session validity check — only runs online (getSession refreshes expired
+    // tokens over the network, which would falsely kick offline users out).
     (async () => {
         if (!currentUser) return;
+        if (!navigator.onLine) return;
         try {
             const { data: { session } } = await _supabase.auth.getSession();
             if (!session) {

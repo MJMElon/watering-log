@@ -17,11 +17,15 @@ const supabaseUrl = 'https://kibqjztozokohqmhqqqf.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpYnFqenRvem9rb2hxbWhxcXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMzQzNjIsImV4cCI6MjA4OTgxMDM2Mn0.J7qJUZhWXYf5b9oey4wXJkjdi66jomEMw_NeV9NWF7M';
 const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-// 2a. SESSION VALIDITY CHECK — force re-login if stored session is from a different
-// Supabase project (e.g. after the project migration). Pending records in Dexie
-// and active timers in localStorage['activeWateringSessions'] are preserved.
+// 2a. SESSION VALIDITY CHECK — force re-login ONLY when online and the stored
+// session is missing/invalid (e.g. after the project migration). Skipped when
+// offline because getSession() tries to refresh expired tokens via network,
+// which fails offline → would falsely kick offline workers out of the app.
+// Pending records in Dexie and active timers in localStorage['activeWateringSessions']
+// are preserved regardless.
 (async () => {
     if (!currentUser) return;
+    if (!navigator.onLine) return; // offline: trust localStorage, don't validate
     try {
         const { data: { session } } = await _supabase.auth.getSession();
         if (!session) {
