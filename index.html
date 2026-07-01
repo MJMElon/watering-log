@@ -61,7 +61,7 @@
 </head>
 <body>
 
-<div class="login-container">
+<div class="login-container" id="loginContainer" style="visibility: hidden;">
     <h2>🌱 Siram Go! 🚿</h2>
     <p>Sila Log Masuk & Mula Menyiram</p>
     
@@ -89,6 +89,40 @@
 
     // 2. Initialize with a unique name to avoid naming conflicts
     const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    // Reveal the login form. Called only when we've decided the user actually
+    // needs to type credentials — prevents the login form from flashing on
+    // screen for a fraction of a second when we're about to redirect.
+    function showLoginForm() {
+        const el = document.getElementById('loginContainer');
+        if (el) el.style.visibility = 'visible';
+    }
+
+    // Safety net: if for any reason the async check below hangs, show the form
+    // after 1.2s so the user is never stuck on a blank screen.
+    setTimeout(showLoginForm, 1200);
+
+    // Fix 2: Session auto-restore — if a valid Supabase session still exists but
+    // `loggedInUser` was cleared (e.g. by a false-null logout earlier), silently
+    // restore the flag and route them in without asking for credentials again.
+    // This ALSO prevents an unnecessary signInWithPassword call, which would
+    // rotate the refresh token and could invalidate the user's other devices/tabs.
+    (async () => {
+        if (savedUser) return; // already redirecting above (login form stays hidden)
+        try {
+            const { data: { session } = {}, error } = await _supabase.auth.getSession();
+            if (error || !session?.user?.email) { showLoginForm(); return; }
+            const email = session.user.email;
+            localStorage.setItem('loggedInUser', email);
+            let landing = 'form.html';
+            try {
+                const fc = await _supabase.from('watering_field_coordinators')
+                    .select('email').eq('email', email).maybeSingle();
+                if (fc.data) landing = 'dashboard.html';
+            } catch (e) { /* default to form.html */ }
+            window.location.href = landing;
+        } catch (e) { showLoginForm(); }
+    })();
 
     const loginForm = document.getElementById('loginForm');
 

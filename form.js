@@ -17,23 +17,27 @@ const supabaseUrl = 'https://kibqjztozokohqmhqqqf.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpYnFqenRvem9rb2hxbWhxcXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMzQzNjIsImV4cCI6MjA4OTgxMDM2Mn0.J7qJUZhWXYf5b9oey4wXJkjdi66jomEMw_NeV9NWF7M';
 const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-// 2a. SESSION VALIDITY CHECK — force re-login ONLY when online and the stored
-// session is missing/invalid (e.g. after the project migration). Skipped when
-// offline because getSession() tries to refresh expired tokens via network,
-// which fails offline → would falsely kick offline workers out of the app.
+// 2a. SESSION VALIDITY CHECK — force re-login ONLY when online AND the session
+// is confirmed missing (no error). If getSession() returns an error (network
+// hiccup, Supabase 5xx, refresh token race, captive portal), we keep the user
+// logged in — a real invalid session returns { session: null, error: null }.
+// Skipped when offline because getSession() tries to refresh expired tokens over
+// the network, which fails offline → would falsely kick workers out.
 // Pending records in Dexie and active timers in localStorage['activeWateringSessions']
 // are preserved regardless.
 (async () => {
     if (!currentUser) return;
-    if (!navigator.onLine) return; // offline: trust localStorage, don't validate
+    if (!navigator.onLine) return;
     try {
-        const { data: { session } } = await _supabase.auth.getSession();
-        if (!session) {
+        const { data: { session } = {}, error } = await _supabase.auth.getSession();
+        // Only log out on a genuinely-missing session. Any error means the check
+        // is inconclusive (network/refresh problem) — leave the user alone.
+        if (!session && !error) {
             localStorage.removeItem('loggedInUser');
             alert('Sesi tamat. Sila log masuk semula.');
             window.location.href = 'index.html';
         }
-    } catch (e) { /* getSession failure — don't risk worker flow, leave user alone */ }
+    } catch (e) { /* getSession threw (rare) — don't risk worker flow */ }
 })();
 
 // 2b. FIELD COORDINATOR REDIRECT — FCs only view dashboard, never the worker form
