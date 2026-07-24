@@ -50,6 +50,34 @@ const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
     } catch (e) { /* table missing or error — treat as non-FC, do nothing */ }
 })();
 
+// 2c. WORKER WHITELIST GATE — block authenticated users who aren't allowed to
+// use Siram Go! (e.g. users from the merged app who shouldn't see this page).
+// Runs in parallel with the FC redirect above — FCs pass this check too and
+// get sent to dashboard.html by that IIFE. Skipped offline so field workers
+// with expired tokens or captive portals aren't falsely blocked. Network/RLS
+// errors fail-open so a temporary Supabase issue can't lock the whole team out.
+(async () => {
+    if (!currentUser) return;
+    if (!navigator.onLine) return; // offline: trust localStorage
+    try {
+        const [adminRes, workerRes, fcRes] = await Promise.all([
+            _supabase.from('watering_admins').select('email').eq('email', currentUser).maybeSingle(),
+            _supabase.from('watering_workers').select('email').eq('email', currentUser).maybeSingle(),
+            _supabase.from('watering_field_coordinators').select('email').eq('email', currentUser).maybeSingle()
+        ]);
+        const isAllowed = !!adminRes.data || !!workerRes.data || !!fcRes.data;
+        if (!isAllowed) {
+            alert('Akaun anda tidak dibenarkan mengakses Siram Go!');
+            try { await _supabase.auth.signOut(); } catch (e) { /* offline OK */ }
+            localStorage.removeItem('loggedInUser');
+            window.location.href = 'index.html';
+        }
+    } catch (e) {
+        // Network / RLS error — do NOT block. Try again next page load.
+        console.error('worker whitelist check:', e);
+    }
+})();
+
 let activeTimers = {};
 let currentPlotPending = "";
 const cameraInput = document.getElementById('cameraInput');
