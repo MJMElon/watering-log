@@ -645,6 +645,9 @@ async function logout() {
     if (count > 0) {
         if (!confirm("You have " + count + " records not uploaded. Logout anyway?")) return;
     }
+    // Clear the Supabase session too — otherwise index.html's auto-restore
+    // detects the still-valid session and bounces the user back in.
+    try { await _supabase.auth.signOut(); } catch (e) { /* offline OK — local state is cleared regardless */ }
     localStorage.removeItem('loggedInUser');
     window.location.href = "index.html";
 }
