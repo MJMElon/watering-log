@@ -130,6 +130,32 @@
         } catch (e) { /* getSession threw (rare) — leave user alone */ }
     })();
 
+    // WHITELIST GATE — allow admin or worker. FCs pass this check too (avoids a
+    // race with the FC-redirect IIFE below) but get sent to dashboard by that
+    // redirect. Merged-app users who aren't in any list get blocked.
+    // Skipped offline so legitimate workers aren't falsely blocked.
+    (async () => {
+        if (!currentUser) return;
+        if (!navigator.onLine) return;
+        try {
+            const [adminRes, workerRes, fcRes] = await Promise.all([
+                _supabase.from('watering_admins').select('email').eq('email', currentUser).maybeSingle(),
+                _supabase.from('watering_workers').select('email').eq('email', currentUser).maybeSingle(),
+                _supabase.from('watering_field_coordinators').select('email').eq('email', currentUser).maybeSingle()
+            ]);
+            const isAllowed = !!adminRes.data || !!workerRes.data || !!fcRes.data;
+            if (!isAllowed) {
+                alert('Akaun anda tidak dibenarkan mengakses Siram Go!');
+                try { await _supabase.auth.signOut(); } catch (e) { /* offline OK */ }
+                localStorage.removeItem('loggedInUser');
+                window.location.href = 'index.html';
+            }
+        } catch (e) {
+            // Network / RLS error — do NOT block. Try again next page load.
+            console.error('whitelist check:', e);
+        }
+    })();
+
     // Field Coordinator redirect — FCs only view dashboard
     (async () => {
         if (!currentUser) return;
