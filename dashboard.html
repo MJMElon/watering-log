@@ -757,22 +757,41 @@
         if (userBadgePopupTimer) { clearTimeout(userBadgePopupTimer); userBadgePopupTimer = null; }
     }
 
-    async function hideHomeIfFC() {
+    // Show the Home button ONLY when we can confirm the user is admin or worker.
+    // FCs, merged-app users, and unknowns → button hidden. Cached in localStorage
+    // so the decision applies instantly offline (previously a network-only check
+    // meant FCs offline still saw the button and could reach form.html).
+    async function updateHomeButtonVisibility() {
+        const CACHE_KEY = 'canAccessForm_v1';
+        const homeBtn = document.getElementById('homeBtn');
+        if (!homeBtn) return;
+
+        // Instant path: hide immediately if the last online check said "no".
+        // A cached "true" or missing cache leaves the HTML default (visible).
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached === 'false') homeBtn.style.display = 'none';
+
+        // Refresh from network if online. Offline → trust the cache.
+        if (!navigator.onLine) return;
         try {
-            const { data } = await _supabase.from('watering_field_coordinators')
-                .select('email').eq('email', currentUser).maybeSingle();
-            if (data) {
-                const home = document.getElementById('homeBtn');
-                if (home) home.style.display = 'none';
-            }
-        } catch (e) { /* table missing or error — leave button visible */ }
+            const [adminRes, workerRes] = await Promise.all([
+                _supabase.from('watering_admins').select('email').eq('email', currentUser).maybeSingle(),
+                _supabase.from('watering_workers').select('email').eq('email', currentUser).maybeSingle()
+            ]);
+            // Only update cache on clean success — errors are inconclusive
+            // (a Supabase 5xx shouldn't wipe an admin's known-good "true").
+            if (adminRes.error || workerRes.error) return;
+            const canAccess = !!adminRes.data || !!workerRes.data;
+            localStorage.setItem(CACHE_KEY, String(canAccess));
+            homeBtn.style.display = canAccess ? '' : 'none';
+        } catch (e) { /* network threw — don't change visibility */ }
     }
 
     window.onload = () => {
         const badge = document.getElementById('userBadge');
         if (badge && currentUser) badge.textContent = currentUser.split('@')[0];
 
-        hideHomeIfFC();
+        updateHomeButtonVisibility();
         document.getElementById('startDate').value = getMonthStart();
         document.getElementById('endDate').value = getToday();
         loadData();
