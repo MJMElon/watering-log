@@ -411,16 +411,17 @@
             const { data, error } = await _supabase
                 .from('watering_admins').select('email').eq('email', currentUser).maybeSingle();
 
-            if (error || !data) {
-                alert('Halaman ini hanya untuk admin.');
-                // Send FCs to dashboard, everyone else to form
-                try {
-                    const fc = await _supabase.from('watering_field_coordinators')
-                        .select('email').eq('email', currentUser).maybeSingle();
-                    window.location.href = fc.data ? 'dashboard.html' : 'form.html';
-                } catch (e) {
-                    window.location.href = 'form.html';
-                }
+            // Network/RLS error → don't kick admin out on a transient blip.
+            // Leave the loading state visible; page will remain blank until they retry.
+            if (error) {
+                console.error('verifyAdminAccess:', error);
+                return;
+            }
+
+            // Not an admin → silently redirect to dashboard (matches the site-wide
+            // pattern where non-authorized users land on dashboard).
+            if (!data) {
+                window.location.href = 'dashboard.html';
                 return;
             }
 
@@ -433,8 +434,8 @@
             document.getElementById('monthPicker').value = monthValue;
             loadMonth();
         } catch (e) {
-            alert('Tidak dapat sahkan akses. Sila cuba semula.');
-            window.location.href = 'form.html';
+            // Async threw (rare) — don't disrupt. Leave loading state.
+            console.error('verifyAdminAccess threw:', e);
         }
     }
 

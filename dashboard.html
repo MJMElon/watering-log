@@ -243,32 +243,10 @@
         } catch (e) { /* getSession threw (rare) — leave user alone */ }
     })();
 
-    // WHITELIST GATE — allow admin, worker, or FC only. Block merged-app users
-    // who signed up on the sister app but shouldn't see Siram Go! data.
-    // Skipped offline so legitimate users aren't falsely blocked with expired
-    // tokens or captive-portal issues. Network/RLS errors fail-open so a
-    // Supabase hiccup doesn't lock the whole team out.
-    (async () => {
-        if (!currentUser) return;
-        if (!navigator.onLine) return;
-        try {
-            const [adminRes, workerRes, fcRes] = await Promise.all([
-                _supabase.from('watering_admins').select('email').eq('email', currentUser).maybeSingle(),
-                _supabase.from('watering_workers').select('email').eq('email', currentUser).maybeSingle(),
-                _supabase.from('watering_field_coordinators').select('email').eq('email', currentUser).maybeSingle()
-            ]);
-            const isAllowed = !!adminRes.data || !!workerRes.data || !!fcRes.data;
-            if (!isAllowed) {
-                alert('Akaun anda tidak dibenarkan mengakses Siram Go!');
-                try { await _supabase.auth.signOut(); } catch (e) { /* offline OK */ }
-                localStorage.removeItem('loggedInUser');
-                window.location.href = 'index.html';
-            }
-        } catch (e) {
-            // Network / RLS error — do NOT block. Try again next page load.
-            console.error('whitelist check:', e);
-        }
-    })();
+    // NOTE: dashboard.html is intentionally open to ANY authenticated user
+    // (admins, workers, FCs, and merged-app users). Merged-app users are
+    // silently redirected here from the more sensitive pages (form/records/payroll).
+    // No whitelist gate needed on this page.
 
     let fullData = [];
     let filteredData = [];

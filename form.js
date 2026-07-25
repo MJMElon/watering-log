@@ -50,12 +50,14 @@ const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
     } catch (e) { /* table missing or error — treat as non-FC, do nothing */ }
 })();
 
-// 2c. WORKER WHITELIST GATE — block authenticated users who aren't allowed to
-// use Siram Go! (e.g. users from the merged app who shouldn't see this page).
+// 2c. WORKER WHITELIST GATE — silently redirect users who aren't allowed to
+// use the worker form (merged-app users, etc.) to dashboard.html — same UX
+// as the FC redirect above. Recording/session data stays visible only to
+// admin + workers.
 // Runs in parallel with the FC redirect above — FCs pass this check too and
 // get sent to dashboard.html by that IIFE. Skipped offline so field workers
-// with expired tokens or captive portals aren't falsely blocked. Network/RLS
-// errors fail-open so a temporary Supabase issue can't lock the whole team out.
+// with expired tokens or captive portals aren't falsely bounced. Network/RLS
+// errors fail-open so a temporary Supabase issue can't disrupt the whole team.
 (async () => {
     if (!currentUser) return;
     if (!navigator.onLine) return; // offline: trust localStorage
@@ -67,13 +69,10 @@ const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
         ]);
         const isAllowed = !!adminRes.data || !!workerRes.data || !!fcRes.data;
         if (!isAllowed) {
-            alert('Akaun anda tidak dibenarkan mengakses Siram Go!');
-            try { await _supabase.auth.signOut(); } catch (e) { /* offline OK */ }
-            localStorage.removeItem('loggedInUser');
-            window.location.href = 'index.html';
+            window.location.href = 'dashboard.html';
         }
     } catch (e) {
-        // Network / RLS error — do NOT block. Try again next page load.
+        // Network / RLS error — do NOT redirect. Try again next page load.
         console.error('worker whitelist check:', e);
     }
 })();
