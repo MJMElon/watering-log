@@ -16,6 +16,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
     <script src="sw-register.js"></script>
+    <script src="plots.js"></script>
 
     <style>
         :root {
@@ -55,6 +56,15 @@
         .thumb-mini { width: 38px; height: 38px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; cursor: pointer; transition: 0.2s; }
         .thumb-mini:hover { border-color: var(--dark); transform: scale(1.1); }
 
+        /* Filter Bar */
+        .filter-bar { background: white; border-radius: 10px; padding: 10px; margin-bottom: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+        .filter-group { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 100px; }
+        .filter-group label { font-size: 10px; color: #666; font-weight: bold; text-transform: uppercase; }
+        .filter-group input, .filter-group select { padding: 7px 6px; border: 1px solid #ccc; border-radius: 5px; font-size: 13px; background: white; width: 100%; box-sizing: border-box; }
+        .btn-reset { padding: 8px 12px; border-radius: 5px; border: 1px solid #ccc; background: #f8f9fa; color: #666; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .btn-reset:hover { background: #eee; }
+        .filter-count { width: 100%; font-size: 11px; color: #999; margin-top: 2px; }
+
         /* Pagination */
         .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 15px; padding: 10px; font-size: 13px; }
         .btn-page { padding: 6px 15px; border-radius: 5px; border: 1px solid #ccc; background: white; cursor: pointer; }
@@ -70,6 +80,27 @@
             <span onclick="showUserBadgePopup(this)" style="color:#666; font-size:13px; cursor:pointer; user-select:none; white-space:nowrap;" title="Tap to show full email">👤 <span id="userBadge"></span></span>
             <a href="form.html" class="btn-nav">🏠 Home</a>
         </div>
+    </div>
+
+    <div class="filter-bar">
+        <div class="filter-group">
+            <label for="filterDate">Tarikh</label>
+            <input type="date" id="filterDate" onchange="applyFilters()">
+        </div>
+        <div class="filter-group">
+            <label for="filterNursery">Nurseri</label>
+            <select id="filterNursery" onchange="onNurseryChange()">
+                <option value="">Semua</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="filterPlot">Plot</label>
+            <select id="filterPlot" onchange="applyFilters()">
+                <option value="">Semua</option>
+            </select>
+        </div>
+        <button class="btn-reset" onclick="resetFilters()">✖ Reset</button>
+        <div class="filter-count" id="filterCount"></div>
     </div>
 
     <div class="table-wrapper">
@@ -165,8 +196,90 @@
     })();
 
     let allRecords = [];
+    let filteredRecords = [];
     let currentPage = 1;
     const recordsPerPage = 30;
+
+    // --- Search / Filter (Tarikh, Nurseri, Plot) ---
+    // Whole-nursery records store the nursery name itself in plot_name
+    // (BNN / UNN1 / UNN2), so a nursery filter must match those too.
+    function getRecordNursery(plotName) {
+        if (plotData[plotName]) return plotName;
+        for (const [nursery, plots] of Object.entries(plotData)) {
+            if (plots.includes(plotName)) return nursery;
+        }
+        return null;
+    }
+
+    function populateNurseryOptions() {
+        const sel = document.getElementById('filterNursery');
+        Object.keys(plotData).forEach(n => {
+            const opt = document.createElement('option');
+            opt.value = n;
+            opt.textContent = n;
+            sel.appendChild(opt);
+        });
+    }
+
+    function populatePlotOptions() {
+        const nursery = document.getElementById('filterNursery').value;
+        const sel = document.getElementById('filterPlot');
+        const prev = sel.value;
+        sel.innerHTML = '<option value="">Semua</option>';
+        const nurseries = nursery ? [nursery] : Object.keys(plotData);
+        nurseries.forEach(n => {
+            const optAll = document.createElement('option');
+            optAll.value = n;
+            optAll.textContent = '🌍 Semua ' + n;
+            sel.appendChild(optAll);
+            plotData[n].forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = p;
+                sel.appendChild(opt);
+            });
+        });
+        // Keep the previous plot selection if it is still valid for this nursery
+        if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+        else sel.value = '';
+    }
+
+    function onNurseryChange() {
+        populatePlotOptions();
+        applyFilters();
+    }
+
+    function applyFilters() {
+        const dateVal = document.getElementById('filterDate').value;   // YYYY-MM-DD
+        const nursery = document.getElementById('filterNursery').value;
+        const plot = document.getElementById('filterPlot').value;
+
+        filteredRecords = allRecords.filter(row => {
+            if (dateVal) {
+                const t = row.end_time || row.start_time;
+                if (!t) return false;
+                // Compare in the device's local timezone, same as the table display
+                if (new Date(t).toLocaleDateString('en-CA') !== dateVal) return false;
+            }
+            if (plot) {
+                if (row.plot_name !== plot) return false;
+            } else if (nursery) {
+                if (getRecordNursery(row.plot_name) !== nursery) return false;
+            }
+            return true;
+        });
+
+        currentPage = 1;
+        renderPage();
+    }
+
+    function resetFilters() {
+        document.getElementById('filterDate').value = '';
+        document.getElementById('filterNursery').value = '';
+        document.getElementById('filterPlot').value = '';
+        populatePlotOptions();
+        applyFilters();
+    }
 
     async function fetchAll() {
         // Supabase default response is capped at 1000 rows. Paginate so
@@ -192,7 +305,7 @@
         }
 
         allRecords = allRows;
-        renderPage();
+        applyFilters();
     }
 
     function renderPage() {
@@ -201,10 +314,20 @@
 
         const start = (currentPage - 1) * recordsPerPage;
         const end = start + recordsPerPage;
-        const pageItems = allRecords.slice(start, end);
+        const pageItems = filteredRecords.slice(start, end);
+
+        const countEl = document.getElementById('filterCount');
+        if (countEl) {
+            countEl.textContent = filteredRecords.length === allRecords.length
+                ? `${allRecords.length} rekod`
+                : `${filteredRecords.length} / ${allRecords.length} rekod`;
+        }
 
         if (pageItems.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">Tiada rekod dijumpai.</td></tr>';
+            document.getElementById('pageInfo').innerText = 'Page 1 / 1';
+            document.getElementById('prevBtn').disabled = true;
+            document.getElementById('nextBtn').disabled = true;
             return;
         }
 
@@ -255,7 +378,7 @@
             tbody.appendChild(tr);
         });
 
-        const totalPages = Math.ceil(allRecords.length / recordsPerPage);
+        const totalPages = Math.max(1, Math.ceil(filteredRecords.length / recordsPerPage));
         document.getElementById('pageInfo').innerText = `Page ${currentPage} / ${totalPages}`;
         document.getElementById('prevBtn').disabled = (currentPage === 1);
         document.getElementById('nextBtn').disabled = (currentPage >= totalPages);
@@ -291,6 +414,8 @@
     window.onload = () => {
         const badge = document.getElementById('userBadge');
         if (badge && currentUser) badge.textContent = currentUser.split('@')[0];
+        populateNurseryOptions();
+        populatePlotOptions();
         fetchAll();
     };
 
