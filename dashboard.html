@@ -767,33 +767,49 @@
         return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
     }
 
-    // Group plots watered at the same time (median first-round start, ±30 min).
-    // Returns [{time, plots:[...]}] sorted by time of day.
+    // Analyze every day of the selected range: cluster that day's watering
+    // sessions by start time (±30 min) into groups of plots watered together,
+    // then aggregate identical plot-groups across all days.
+    // Returns [{time, plots:[...], days}] — days = how many times that exact
+    // group ran together — most frequent first.
     function computeRhythms(plots, eventsByPlotDate) {
-        const entries = [];
+        const sessionsByDay = {}; // date -> [{plot, min}]
         for (const plot of plots) {
             const byDate = eventsByPlotDate[plot] || {};
-            const firstStarts = [];
             for (const date in byDate) {
-                const successes = byDate[date].filter(e => e.row.issue_reason === null && e.row.start_time);
-                if (successes.length) firstStarts.push(minutesOfDay(successes[0].row.start_time));
+                for (const e of byDate[date]) {
+                    if (e.row.issue_reason !== null || !e.row.start_time) continue;
+                    (sessionsByDay[date] || (sessionsByDay[date] = [])).push({ plot, min: minutesOfDay(e.row.start_time) });
+                }
             }
-            if (firstStarts.length) entries.push({ plot, med: median(firstStarts) });
         }
-        entries.sort((a, b) => a.med - b.med);
 
-        const clusters = [];
-        for (const e of entries) {
-            const c = clusters[clusters.length - 1];
-            if (c && Math.abs(e.med - c.mean) <= RHYTHM_TOLERANCE_MIN) {
-                c.plots.push(e.plot);
-                c.times.push(e.med);
-                c.mean = c.times.reduce((a, b) => a + b, 0) / c.times.length;
-            } else {
-                clusters.push({ plots: [e.plot], times: [e.med], mean: e.med });
+        const groups = {}; // 'U1, U2, U6' -> {plots, times[], days}
+        for (const date in sessionsByDay) {
+            const events = sessionsByDay[date].sort((a, b) => a.min - b.min);
+            const clusters = [];
+            for (const ev of events) {
+                const c = clusters[clusters.length - 1];
+                if (c && Math.abs(ev.min - c.mean) <= RHYTHM_TOLERANCE_MIN) {
+                    c.items.push(ev);
+                    c.mean = c.items.reduce((a, b) => a + b.min, 0) / c.items.length;
+                } else {
+                    clusters.push({ items: [ev], mean: ev.min });
+                }
+            }
+            for (const c of clusters) {
+                const plotsInGroup = [...new Set(c.items.map(i => i.plot))]
+                    .sort((a, b) => plots.indexOf(a) - plots.indexOf(b));
+                const key = plotsInGroup.join(', ');
+                const g = groups[key] || (groups[key] = { plots: plotsInGroup, times: [], days: 0 });
+                g.times.push(c.mean);
+                g.days += 1;
             }
         }
-        return clusters.map(c => ({ time: fmtMinutes(c.mean), plots: c.plots }));
+
+        return Object.values(groups)
+            .map(g => ({ time: fmtMinutes(median(g.times)), plots: g.plots, days: g.days }))
+            .sort((a, b) => b.days - a.days || (a.time < b.time ? -1 : 1));
     }
 
     function downloadReport() {
@@ -886,10 +902,11 @@
             aoa.push([]);
             aoa.push(['Petunjuk:', '🟢 Berjaya (≥50 min)', '🟡 Separuh (<50 min)', '🌧️ Hujan', '🐜 Spray', '❌ Isu lain (Rosak/Banjir/Kosong/...)']);
             aoa.push([]);
-            aoa.push([`Rhythm Siraman (plot disiram serentak, ± ${RHYTHM_TOLERANCE_MIN} min)`]);
+            aoa.push([`Rhythm Siraman (plot disiram serentak, ± ${RHYTHM_TOLERANCE_MIN} min) — analisis hari demi hari, ${fmtDMY(dayList[0])} hingga ${fmtDMY(dayList[dayList.length - 1])}`]);
             const rhythms = computeRhythms(plots, buckets[nursery]);
             if (rhythms.length) {
-                rhythms.forEach((r, i) => aoa.push([`Rhythm ${i + 1}`, `~${r.time}`, r.plots.join(', ')]));
+                aoa.push(['', 'Masa', 'Plot', 'Kekerapan']);
+                rhythms.forEach((r, i) => aoa.push([`Rhythm ${i + 1}`, `~${r.time}`, r.plots.join(', '), `${r.days} kali`]));
             } else {
                 aoa.push(['Tiada data siraman berjaya dalam julat ini.']);
             }
