@@ -755,7 +755,7 @@
     function reportSymbol(row) {
         if (row.issue_reason === null) return (row.duration || 0) >= 50 ? '🟢' : '🟡';
         if (row.issue_reason === 'Hujan') return '🌧️ Hujan';
-        if (row.issue_reason === 'Spray') return '🐜 Spray';
+        if (row.issue_reason === 'Spray') return 'Spray';
         return '❌ ' + row.issue_reason;
     }
 
@@ -900,7 +900,7 @@
             }
 
             aoa.push([]);
-            aoa.push(['Petunjuk:', '🟢 Berjaya (≥50 min)', '🟡 Separuh (<50 min)', '🌧️ Hujan', '🐜 Spray', '❌ Isu lain (Rosak/Banjir/Kosong/...)']);
+            aoa.push(['Petunjuk:', '🟢 Berjaya (≥50 min)', '🟡 Separuh (<50 min)', '🌧️ Hujan', 'Spray', '❌ Isu lain (Rosak/Banjir/Kosong/...)']);
             aoa.push([]);
             aoa.push([`Rhythm Siraman (plot disiram serentak, ± ${RHYTHM_TOLERANCE_MIN} min) — analisis hari demi hari, ${fmtDMY(dayList[0])} hingga ${fmtDMY(dayList[dayList.length - 1])}`]);
             const rhythms = computeRhythms(plots, buckets[nursery]);
