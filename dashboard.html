@@ -15,6 +15,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="plots.js"></script>
     <script src="sw-register.js"></script>
 
@@ -165,6 +166,7 @@
                 <select id="workerSelect" onchange="runFilter()"><option value="ALL">Semua Pekerja</option></select>
             </div>
             <button class="btn-export" onclick="downloadCSV()">📥 Export CSV</button>
+            <button class="btn-export" style="background:#28a745;" onclick="downloadReport()">📊 Download Report</button>
         </div>
     </div>
 
@@ -734,6 +736,172 @@
         a.href = window.URL.createObjectURL(blob);
         a.download = `Farm_Analytics_${new Date().toISOString().split('T')[0]}.csv`;
         a.click();
+    }
+
+    // ----- DOWNLOAD REPORT (day-by-round grid + watering rhythm, .xlsx) -----
+    const NURSERY_FULL = { BNN: 'Batu Niah', UNN1: 'Ulu Niah 1', UNN2: 'Ulu Niah 2' };
+    const RHYTHM_TOLERANCE_MIN = 30;
+
+    function nurseryOfPlot(plotName) {
+        if (plotData[plotName]) return plotName; // whole-nursery record
+        for (const [nursery, plots] of Object.entries(plotData)) {
+            if (plots.includes(plotName)) return nursery;
+        }
+        return null;
+    }
+
+    function localDateISO(t) { return new Date(t).toLocaleDateString('en-CA'); } // YYYY-MM-DD, device timezone
+
+    function reportSymbol(row) {
+        if (row.issue_reason === null) return (row.duration || 0) >= 50 ? '🟢' : '🟡';
+        if (row.issue_reason === 'Hujan') return '🌧️ Hujan';
+        if (row.issue_reason === 'Spray') return '🐜 Spray';
+        return '❌ ' + row.issue_reason;
+    }
+
+    function minutesOfDay(t) { const d = new Date(t); return d.getHours() * 60 + d.getMinutes(); }
+    function fmtMinutes(m) { return `${pad(Math.floor(m / 60))}:${pad(Math.round(m % 60))}`; }
+    function median(arr) {
+        const s = [...arr].sort((a, b) => a - b);
+        const mid = Math.floor(s.length / 2);
+        return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+    }
+
+    // Group plots watered at the same time (median first-round start, ±30 min).
+    // Returns [{time, plots:[...]}] sorted by time of day.
+    function computeRhythms(plots, eventsByPlotDate) {
+        const entries = [];
+        for (const plot of plots) {
+            const byDate = eventsByPlotDate[plot] || {};
+            const firstStarts = [];
+            for (const date in byDate) {
+                const successes = byDate[date].filter(e => e.row.issue_reason === null && e.row.start_time);
+                if (successes.length) firstStarts.push(minutesOfDay(successes[0].row.start_time));
+            }
+            if (firstStarts.length) entries.push({ plot, med: median(firstStarts) });
+        }
+        entries.sort((a, b) => a.med - b.med);
+
+        const clusters = [];
+        for (const e of entries) {
+            const c = clusters[clusters.length - 1];
+            if (c && Math.abs(e.med - c.mean) <= RHYTHM_TOLERANCE_MIN) {
+                c.plots.push(e.plot);
+                c.times.push(e.med);
+                c.mean = c.times.reduce((a, b) => a + b, 0) / c.times.length;
+            } else {
+                clusters.push({ plots: [e.plot], times: [e.med], mean: e.med });
+            }
+        }
+        return clusters.map(c => ({ time: fmtMinutes(c.mean), plots: c.plots }));
+    }
+
+    function downloadReport() {
+        if (typeof XLSX === 'undefined') {
+            alert('Modul report belum dimuat (perlu online sekali). Sila reload halaman.');
+            return;
+        }
+        if (!filteredData.length) { alert('Tiada rekod untuk dijana report.'); return; }
+
+        // Date range: the filter inputs, falling back to the data's own span
+        const dataDates = filteredData.map(r => localDateISO(r.end_time || r.start_time)).sort();
+        const startStr = document.getElementById('startDate').value || dataDates[0];
+        const endStr = document.getElementById('endDate').value || dataDates[dataDates.length - 1];
+
+        const dayList = [];
+        for (const d = new Date(startStr + 'T00:00:00'); localDateISO(d) <= endStr; d.setDate(d.getDate() + 1)) {
+            dayList.push(localDateISO(d));
+            if (dayList.length > 92) { alert('Julat tarikh terlalu besar untuk report (max 3 bulan).'); return; }
+        }
+        if (!dayList.length) { alert('Julat tarikh tidak sah.'); return; }
+
+        const sameMonth = startStr.slice(0, 7) === endStr.slice(0, 7);
+        const fmtDMY = (iso) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
+        const rangeLabel = sameMonth
+            ? new Date(startStr + 'T00:00:00').toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })
+            : `${fmtDMY(startStr)} - ${fmtDMY(endStr)}`;
+
+        // Bucket events: nursery -> plot -> date -> [ {sortKey, row} ]
+        // Whole-nursery records (plot_name = BNN/UNN1/UNN2) mark every plot in it.
+        const buckets = { BNN: {}, UNN1: {}, UNN2: {} };
+        for (const row of filteredData) {
+            const t = row.end_time || row.start_time;
+            if (!t) continue;
+            const date = localDateISO(t);
+            if (date < startStr || date > endStr) continue;
+            const nursery = nurseryOfPlot(row.plot_name);
+            if (!nursery) continue;
+            const targetPlots = plotData[row.plot_name] || [row.plot_name];
+            for (const plot of targetPlots) {
+                const byDate = buckets[nursery][plot] || (buckets[nursery][plot] = {});
+                (byDate[date] || (byDate[date] = [])).push({ sortKey: row.start_time || t, row });
+            }
+        }
+        for (const n in buckets) for (const p in buckets[n]) for (const d in buckets[n][p]) {
+            buckets[n][p][d].sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1));
+        }
+
+        const locFilter = document.getElementById('locSelect').value;
+        const plotFilter = document.getElementById('plotSelect').value;
+        const nurseries = locFilter !== 'ALL' ? [locFilter] : ['BNN', 'UNN1', 'UNN2'];
+
+        const wb = XLSX.utils.book_new();
+        for (const nursery of nurseries) {
+            const plots = (plotFilter !== 'ALL' && plotData[nursery].includes(plotFilter))
+                ? [plotFilter]
+                : plotData[nursery];
+
+            let maxRounds = 3;
+            for (const plot of plots) {
+                const byDate = buckets[nursery][plot] || {};
+                for (const d in byDate) maxRounds = Math.max(maxRounds, byDate[d].length);
+            }
+
+            const aoa = [
+                ['Watering Record'],
+                [NURSERY_FULL[nursery] || nursery],
+                [rangeLabel],
+                []
+            ];
+            const merges = [];
+            const plotHeader = [''];
+            const roundHeader = [sameMonth ? 'Hari' : 'Tarikh'];
+            plots.forEach((plot, i) => {
+                const c0 = 1 + i * maxRounds;
+                plotHeader[c0] = plot;
+                for (let r = 1; r <= maxRounds; r++) roundHeader[c0 + r - 1] = `Round ${r}`;
+                if (maxRounds > 1) merges.push({ s: { r: 4, c: c0 }, e: { r: 4, c: c0 + maxRounds - 1 } });
+            });
+            aoa.push(plotHeader, roundHeader);
+
+            for (const date of dayList) {
+                const rowArr = [sameMonth ? Number(date.slice(8, 10)) : fmtDMY(date).slice(0, 5)];
+                plots.forEach((plot, i) => {
+                    const events = (buckets[nursery][plot] || {})[date] || [];
+                    events.forEach((e, r) => { rowArr[1 + i * maxRounds + r] = reportSymbol(e.row); });
+                });
+                aoa.push(rowArr);
+            }
+
+            aoa.push([]);
+            aoa.push(['Petunjuk:', '🟢 Berjaya (≥50 min)', '🟡 Separuh (<50 min)', '🌧️ Hujan', '🐜 Spray', '❌ Isu lain (Rosak/Banjir/Kosong/...)']);
+            aoa.push([]);
+            aoa.push([`Rhythm Siraman (plot disiram serentak, ± ${RHYTHM_TOLERANCE_MIN} min)`]);
+            const rhythms = computeRhythms(plots, buckets[nursery]);
+            if (rhythms.length) {
+                rhythms.forEach((r, i) => aoa.push([`Rhythm ${i + 1}`, `~${r.time}`, r.plots.join(', ')]));
+            } else {
+                aoa.push(['Tiada data siraman berjaya dalam julat ini.']);
+            }
+
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            ws['!merges'] = merges;
+            ws['!cols'] = [{ wch: 8 }].concat(Array(plots.length * maxRounds).fill({ wch: 10 }));
+            XLSX.utils.book_append_sheet(wb, ws, nursery);
+        }
+
+        const fileTag = sameMonth ? startStr.slice(0, 7) : `${startStr}_${endStr}`;
+        XLSX.writeFile(wb, `Watering_Report_${fileTag}.xlsx`);
     }
 
     let userBadgePopupTimer = null;
