@@ -15,8 +15,10 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="sw-register.js"></script>
     <script src="plots.js"></script>
+    <script src="nav.js"></script>
 
     <style>
         :root {
@@ -28,7 +30,7 @@
         }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 10px; background: var(--bg); margin: 0; }
         .container { max-width: 900px; margin: auto; }
-        
+
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .btn-nav { text-decoration: none; background: var(--dark); color: white; padding: 8px 15px; border-radius: 6px; font-size: 13px; font-weight: bold; }
 
@@ -37,12 +39,13 @@
         table { width: 100%; border-collapse: collapse; font-size: 11px; min-width: 500px; }
         th { background: #eee; padding: 8px 5px; text-align: left; color: #666; font-size: 10px; text-transform: uppercase; border-bottom: 1px solid #ddd; }
         td { padding: 6px 5px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
-        
+
         /* Column Widths */
         .col-time { width: 95px; }
         .col-plot { width: 60px; }
         .col-status { width: auto; }
         .col-dur { width: 40px; text-align: center; }
+        .col-worker { width: 62px; }
         .col-pic { width: 90px; text-align: center; }
 
         /* Status Tags */
@@ -64,6 +67,18 @@
         .btn-reset { padding: 8px 12px; border-radius: 5px; border: 1px solid #ccc; background: #f8f9fa; color: #666; font-size: 12px; cursor: pointer; white-space: nowrap; }
         .btn-reset:hover { background: #eee; }
         .filter-count { width: 100%; font-size: 11px; color: #999; margin-top: 2px; }
+        .btn-export { background: #007bff; color: white; border: none; padding: 8px 11px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 12px; white-space: nowrap; }
+
+        /* Compact stats — deliberately lighter than the dashboard cards */
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+        .stat-card { background: white; padding: 9px 6px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; border-top: 4px solid #ccc; }
+        .stat-label { font-size: 9px; color: #888; text-transform: uppercase; font-weight: bold; letter-spacing: 0.3px; }
+        .stat-num { font-size: 22px; font-weight: bold; margin-top: 1px; line-height: 1.1; }
+
+        .breakdown-container { background: white; padding: 10px 12px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .breakdown-container h3 { margin: 0; color: var(--danger); font-size: 13px; }
+        .breakdown-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 6px; margin-top: 8px; }
+        .breakdown-item { background: #fff5f5; padding: 6px 4px; border-radius: 6px; border: 1px solid #ffe3e3; text-align: center; }
 
         /* Pagination */
         .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 15px; padding: 10px; font-size: 13px; }
@@ -84,23 +99,59 @@
 
     <div class="filter-bar">
         <div class="filter-group">
-            <label for="filterDate">Tarikh</label>
-            <input type="date" id="filterDate" onchange="applyFilters()">
+            <label for="startDate">Tarikh Mula</label>
+            <input type="date" id="startDate" onchange="loadData()">
         </div>
         <div class="filter-group">
-            <label for="filterNursery">Nurseri</label>
-            <select id="filterNursery" onchange="onNurseryChange()">
-                <option value="">Semua</option>
+            <label for="endDate">Tarikh Hingga</label>
+            <input type="date" id="endDate" onchange="loadData()">
+        </div>
+        <div class="filter-group">
+            <label for="startTime">Masa Dari</label>
+            <input type="time" id="startTime" onchange="runFilter()">
+        </div>
+        <div class="filter-group">
+            <label for="endTime">Masa Hingga</label>
+            <input type="time" id="endTime" onchange="runFilter()">
+        </div>
+        <div class="filter-group">
+            <label for="locSelect">Nurseri</label>
+            <select id="locSelect" onchange="syncPlots()">
+                <option value="ALL">Semua</option>
             </select>
         </div>
         <div class="filter-group">
-            <label for="filterPlot">Plot</label>
-            <select id="filterPlot" onchange="applyFilters()">
-                <option value="">Semua</option>
-            </select>
+            <label for="plotSelect">Plot</label>
+            <select id="plotSelect" onchange="runFilter()"><option value="ALL">Semua</option></select>
+        </div>
+        <div class="filter-group">
+            <label for="workerSelect">Pekerja</label>
+            <select id="workerSelect" onchange="runFilter()"><option value="ALL">Semua</option></select>
         </div>
         <button class="btn-reset" onclick="resetFilters()">✖ Reset</button>
+        <button class="btn-export" onclick="downloadCSV()">📥 CSV</button>
+        <button class="btn-export" style="background:#28a745;" onclick="downloadReport()">📊 Report</button>
         <div class="filter-count" id="filterCount"></div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card" style="border-top-color: var(--primary);">
+            <div class="stat-label">Berjaya (&gt;50m)</div>
+            <div id="statSuccess" class="stat-num" style="color: var(--primary);">0</div>
+        </div>
+        <div class="stat-card" style="border-top-color: var(--warning);">
+            <div class="stat-label">Separuh (&lt;50m)</div>
+            <div id="statPartial" class="stat-num" style="color: #b08a00;">0</div>
+        </div>
+        <div class="stat-card" style="border-top-color: var(--danger);">
+            <div class="stat-label">Total Isu</div>
+            <div id="statTotalIssue" class="stat-num" style="color: var(--danger);">0</div>
+        </div>
+    </div>
+
+    <div class="breakdown-container">
+        <h3>🔍 Ringkasan Isu</h3>
+        <div id="issueBreakdownArea" class="breakdown-grid"></div>
     </div>
 
     <div class="table-wrapper">
@@ -111,11 +162,12 @@
                     <th class="col-plot">Plot</th>
                     <th class="col-status">Status</th>
                     <th class="col-dur">Min</th>
+                    <th class="col-worker">Pekerja</th>
                     <th class="col-pic">Mula / Tamat</th>
                 </tr>
             </thead>
             <tbody id="recordBody">
-                <tr><td colspan="5" style="text-align:center; padding: 40px; color:#999;">Memuatkan data...</td></tr>
+                <tr><td colspan="6" style="text-align:center; padding:20px;">Memuatkan...</td></tr>
             </tbody>
         </table>
     </div>
@@ -195,24 +247,23 @@
         } catch (e) { /* table missing or error — proceed */ }
     })();
 
-    let allRecords = [];
-    let filteredRecords = [];
+    let fullData = [];
+    let filteredData = [];
     let currentPage = 1;
     const recordsPerPage = 30;
 
-    // --- Search / Filter (Tarikh, Nurseri, Plot) ---
-    // Whole-nursery records store the nursery name itself in plot_name
-    // (BNN / UNN1 / UNN2), so a nursery filter must match those too.
-    function getRecordNursery(plotName) {
-        if (plotData[plotName]) return plotName;
-        for (const [nursery, plots] of Object.entries(plotData)) {
-            if (plots.includes(plotName)) return nursery;
-        }
-        return null;
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function getMonthStart() {
+        const d = new Date();
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`;
+    }
+    function getToday() {
+        const d = new Date();
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     }
 
     function populateNurseryOptions() {
-        const sel = document.getElementById('filterNursery');
+        const sel = document.getElementById('locSelect');
         Object.keys(plotData).forEach(n => {
             const opt = document.createElement('option');
             opt.value = n;
@@ -221,134 +272,201 @@
         });
     }
 
-    function populatePlotOptions() {
-        const nursery = document.getElementById('filterNursery').value;
-        const sel = document.getElementById('filterPlot');
-        const prev = sel.value;
-        sel.innerHTML = '<option value="">Semua</option>';
-        const nurseries = nursery ? [nursery] : Object.keys(plotData);
-        nurseries.forEach(n => {
-            const optAll = document.createElement('option');
-            optAll.value = n;
-            optAll.textContent = '🌍 Semua ' + n;
-            sel.appendChild(optAll);
-            plotData[n].forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p;
-                opt.textContent = p;
-                sel.appendChild(opt);
-            });
-        });
-        // Keep the previous plot selection if it is still valid for this nursery
-        if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
-        else sel.value = '';
+    function syncPlots() {
+        const loc = document.getElementById('locSelect').value;
+        const plotDropdown = document.getElementById('plotSelect');
+        plotDropdown.innerHTML = '<option value="ALL">Semua</option>';
+        if (loc !== "ALL" && plotData[loc]) {
+            plotData[loc].forEach(p => plotDropdown.add(new Option(p, p)));
+        }
+        runFilter();
     }
 
-    function onNurseryChange() {
-        populatePlotOptions();
-        applyFilters();
-    }
+    async function loadData() {
+        const start = document.getElementById('startDate').value;
+        const end = document.getElementById('endDate').value;
 
-    function applyFilters() {
-        const dateVal = document.getElementById('filterDate').value;   // YYYY-MM-DD
-        const nursery = document.getElementById('filterNursery').value;
-        const plot = document.getElementById('filterPlot').value;
-
-        filteredRecords = allRecords.filter(row => {
-            if (dateVal) {
-                const t = row.end_time || row.start_time;
-                if (!t) return false;
-                // Compare in the device's local timezone, same as the table display
-                if (new Date(t).toLocaleDateString('en-CA') !== dateVal) return false;
-            }
-            if (plot) {
-                if (row.plot_name !== plot) return false;
-            } else if (nursery) {
-                if (getRecordNursery(row.plot_name) !== nursery) return false;
-            }
-            return true;
-        });
-
-        currentPage = 1;
-        renderPage();
-    }
-
-    function resetFilters() {
-        document.getElementById('filterDate').value = '';
-        document.getElementById('filterNursery').value = '';
-        document.getElementById('filterPlot').value = '';
-        populatePlotOptions();
-        applyFilters();
-    }
-
-    async function fetchAll() {
-        // Supabase default response is capped at 1000 rows. Paginate so
-        // older history pages still load.
+        // Paginate to bypass the 1000-row Supabase default cap, otherwise
+        // long date ranges miss the most recent rows.
         const PAGE = 1000;
         let allRows = [];
         let from = 0;
         for (;;) {
-            const { data, error } = await _supabase
-                .from('watering_logs')
-                .select('*')
+            let query = _supabase.from('watering_logs').select('*')
                 .order('end_time', { ascending: false })
                 .range(from, from + PAGE - 1);
+            if (start) query = query.gte('end_time', start + 'T00:00:00');
+            if (end) query = query.lte('end_time', end + 'T23:59:59');
 
+            const { data, error } = await query;
             if (error) {
-                console.error("Fetch error:", error);
-                document.getElementById('recordBody').innerHTML = '<tr><td colspan="5" style="text-align:center; color:red;">Gagal memuatkan data.</td></tr>';
+                console.error(error);
+                document.getElementById('recordBody').innerHTML =
+                    '<tr><td colspan="6" style="text-align:center; color:red; padding:20px;">Gagal memuatkan data.</td></tr>';
                 return;
             }
             allRows = allRows.concat(data || []);
             if (!data || data.length < PAGE) break;
             from += PAGE;
         }
-
-        allRecords = allRows;
-        applyFilters();
+        fullData = allRows;
+        populateWorkerDropdown();
+        runFilter();
     }
 
-    function renderPage() {
-        const tbody = document.getElementById('recordBody');
-        tbody.innerHTML = '';
+    function populateWorkerDropdown() {
+        const select = document.getElementById('workerSelect');
+        if (!select) return;
+        const current = select.value || 'ALL';
+        const workers = [...new Set(fullData.map(d => d.user_email).filter(Boolean))].sort();
+        select.innerHTML = '<option value="ALL">Semua</option>';
+        workers.forEach(email => {
+            const opt = document.createElement('option');
+            opt.value = email;
+            opt.text = email.split('@')[0]; // show account name only
+            select.add(opt);
+        });
+        // Preserve previous selection if still valid
+        if (current !== 'ALL' && workers.includes(current)) select.value = current;
+    }
 
-        const start = (currentPage - 1) * recordsPerPage;
-        const end = start + recordsPerPage;
-        const pageItems = filteredRecords.slice(start, end);
+    // "Masa Dari/Hingga" work on the clock time of day, in the phone's own
+    // timezone, so 07:00–12:00 means the morning round regardless of date.
+    function parseHHMM(v) {
+        if (!v) return null;
+        const [h, m] = v.split(':').map(Number);
+        if (isNaN(h) || isNaN(m)) return null;
+        return h * 60 + m;
+    }
+
+    function runFilter() {
+        const start = document.getElementById('startDate').value;
+        const end = document.getElementById('endDate').value;
+        const loc = document.getElementById('locSelect').value;
+        const plot = document.getElementById('plotSelect').value;
+        const worker = document.getElementById('workerSelect').value;
+        const timeFrom = parseHHMM(document.getElementById('startTime').value);
+        const timeTo = parseHHMM(document.getElementById('endTime').value);
+
+        let filtered = fullData;
+
+        // Date range uses end_time, falling back to start_time for issue reports
+        if (start) {
+            filtered = filtered.filter(d => (d.end_time || d.start_time) >= start + 'T00:00:00');
+        }
+        if (end) {
+            filtered = filtered.filter(d => (d.end_time || d.start_time) <= end + 'T23:59:59');
+        }
+
+        // Time-of-day window, based on when the session STARTED
+        if (timeFrom !== null || timeTo !== null) {
+            filtered = filtered.filter(d => {
+                const t = d.start_time || d.end_time;
+                if (!t) return false;
+                const mins = minutesOfDay(t);
+                if (timeFrom !== null && mins < timeFrom) return false;
+                if (timeTo !== null && mins > timeTo) return false;
+                return true;
+            });
+        }
+
+        if (loc !== "ALL") {
+            filtered = filtered.filter(d => d.plot_name &&
+                (d.plot_name.startsWith(loc) || (plotData[loc] && plotData[loc].includes(d.plot_name))));
+        }
+        if (plot !== "ALL") filtered = filtered.filter(d => d.plot_name === plot);
+        if (worker !== "ALL") filtered = filtered.filter(d => d.user_email === worker);
+
+        currentPage = 1;
+        calculateStats(filtered);
+    }
+
+    function resetFilters() {
+        document.getElementById('startDate').value = getMonthStart();
+        document.getElementById('endDate').value = getToday();
+        document.getElementById('startTime').value = '';
+        document.getElementById('endTime').value = '';
+        document.getElementById('locSelect').value = 'ALL';
+        document.getElementById('plotSelect').innerHTML = '<option value="ALL">Semua</option>';
+        document.getElementById('workerSelect').value = 'ALL';
+        loadData();
+    }
+
+    function calculateStats(data) {
+        let successCount = 0;
+        let partialCount = 0;
+        let totalIssueCount = 0;
+        let issueTypes = {};
+
+        data.forEach(row => {
+            const isIssue = row.issue_reason !== null;
+            const isPartial = !isIssue && row.duration < 50;
+            if (isIssue) {
+                // Area-wide issues (plot_name = area code) count once per plot in that area
+                const multiplier = plotData[row.plot_name] ? plotData[row.plot_name].length : 1;
+                totalIssueCount += multiplier;
+                issueTypes[row.issue_reason] = (issueTypes[row.issue_reason] || 0) + multiplier;
+            } else if (isPartial) {
+                partialCount++;
+            } else {
+                successCount++;
+            }
+        });
+
+        filteredData = data;
+        renderTablePage();
+
+        document.getElementById('statSuccess').innerText = successCount;
+        document.getElementById('statPartial').innerText = partialCount;
+        document.getElementById('statTotalIssue').innerText = totalIssueCount;
+
+        const breakdownArea = document.getElementById('issueBreakdownArea');
+        if (totalIssueCount === 0) {
+            breakdownArea.innerHTML = '<p style="color:#999; font-size:11px; text-align:center; padding:6px; margin:0;">Tiada isu dikesan.</p>';
+        } else {
+            breakdownArea.innerHTML = Object.keys(issueTypes).map(type => `
+                <div class="breakdown-item">
+                    <div style="font-size:9px; color:#d9534f; font-weight:bold; text-transform:uppercase;">${type}</div>
+                    <div style="font-size:16px; font-weight:bold; color:#333;">${issueTypes[type]}</div>
+                </div>`).join('');
+        }
+    }
+
+    function renderTablePage() {
+        const tbody = document.getElementById('recordBody');
 
         const countEl = document.getElementById('filterCount');
         if (countEl) {
-            countEl.textContent = filteredRecords.length === allRecords.length
-                ? `${allRecords.length} rekod`
-                : `${filteredRecords.length} / ${allRecords.length} rekod`;
+            countEl.textContent = filteredData.length === fullData.length
+                ? `${fullData.length} rekod`
+                : `${filteredData.length} / ${fullData.length} rekod`;
         }
 
+        const start = (currentPage - 1) * recordsPerPage;
+        const pageItems = filteredData.slice(start, start + recordsPerPage);
+
         if (pageItems.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">Tiada rekod dijumpai.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px;">Tiada rekod dijumpai.</td></tr>';
             document.getElementById('pageInfo').innerText = 'Page 1 / 1';
             document.getElementById('prevBtn').disabled = true;
             document.getElementById('nextBtn').disabled = true;
             return;
         }
 
-        pageItems.forEach(row => {
-            const displayTime = row.end_time ? row.end_time : row.start_time;
-            const dt = new Date(displayTime);
-            const dateStr = dt.toLocaleDateString('ms-MY', { day: '2-digit', month: '2-digit' });
+        const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
 
-            const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
+        tbody.innerHTML = pageItems.map(row => {
+            const displayTime = row.end_time ? row.end_time : row.start_time;
+            const dateStr = new Date(displayTime).toLocaleDateString('ms-MY', { day: '2-digit', month: '2-digit' });
             const startTimeStr = row.start_time ? fmtTime(row.start_time) : '-';
             const endTimeStr = row.end_time ? fmtTime(row.end_time) : '-';
 
             const isIssue = row.issue_reason !== null;
-            const isDeep = row.duration >= 50;
             const isPartial = !isIssue && row.duration < 50;
 
-            let statusHTML = '';
-            let rowStyle = '';
-
+            let statusHTML, rowStyle = '';
             if (isIssue) {
-                statusHTML = `<span class="tag tag-danger">${row.issue_reason.toUpperCase()}</span>`;
+                statusHTML = `<span class="tag tag-danger">${String(row.issue_reason).toUpperCase()}</span>`;
                 rowStyle = 'background-color: #fff8f8;';
             } else if (isPartial) {
                 statusHTML = `<span class="tag tag-warning">SEPARUH</span>`;
@@ -357,37 +475,251 @@
                 statusHTML = `<span class="tag tag-success">BERJAYA</span>`;
             }
 
-            const tr = document.createElement('tr');
-            tr.style = rowStyle;
-            tr.innerHTML = `
-                <td class="col-time" style="font-size: 0.9em;">
-                    ${dateStr}<br>
-                    <small style="color:#999;">Mula:</small> <strong style="color:#28a745;">${startTimeStr}</strong><br>
-                    <small style="color:#999;">Tamat:</small> <strong style="color:#28a745;">${endTimeStr}</strong>
-                </td>
-                <td class="col-plot"><strong>${['BNN','UNN1','UNN2'].includes(row.plot_name) ? '🌍 Semua ' + row.plot_name : row.plot_name}</strong></td>
-                <td class="col-status">${statusHTML}</td>
-                <td class="col-dur"><strong>${row.duration || 0}</strong><br><small style="color:#999;">min</small></td>
-                <td class="col-pic">
-                    <div class="photo-container" style="display:flex; gap:4px;">
-                        ${row.start_photo_url ? `<img src="${row.start_photo_url}" class="thumb-mini" style="width:40px; height:40px; object-fit:cover; border-radius:4px;" title="Gambar Mula" onclick="window.open(this.src)">` : '<span style="color:#ccc">❌</span>'}
-                        ${row.end_photo_url ? `<img src="${row.end_photo_url}" class="thumb-mini" style="width:40px; height:40px; object-fit:cover; border-radius:4px;" title="Gambar Tamat" onclick="window.open(this.src)">` : '<span style="color:#ccc">❌</span>'}
-                    </div>
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
+            const plotLabel = plotData[row.plot_name] ? `🌍 Semua ${row.plot_name}` : row.plot_name;
 
-        const totalPages = Math.max(1, Math.ceil(filteredRecords.length / recordsPerPage));
+            return `
+                <tr style="${rowStyle}">
+                    <td class="col-time" style="font-size: 0.9em;">
+                        ${dateStr}<br>
+                        <small style="color:#999;">Mula:</small> <strong style="color:#28a745;">${startTimeStr}</strong><br>
+                        <small style="color:#999;">Tamat:</small> <strong style="color:#28a745;">${endTimeStr}</strong>
+                    </td>
+                    <td class="col-plot"><strong>${plotLabel}</strong></td>
+                    <td class="col-status">${statusHTML}</td>
+                    <td class="col-dur"><strong>${row.duration || 0}</strong><br><small style="color:#999;">min</small></td>
+                    <td class="col-worker" style="color:#888; font-size:10px;">${row.user_email ? row.user_email.split('@')[0] : '-'}</td>
+                    <td class="col-pic">
+                        <div class="photo-container">
+                            ${row.start_photo_url ? `<img src="${row.start_photo_url}" class="thumb-mini" title="Gambar Mula" onclick="window.open(this.src)">` : '<span style="color:#ccc">❌</span>'}
+                            ${row.end_photo_url ? `<img src="${row.end_photo_url}" class="thumb-mini" title="Gambar Tamat" onclick="window.open(this.src)">` : '<span style="color:#ccc">❌</span>'}
+                        </div>
+                    </td>
+                </tr>`;
+        }).join('');
+
+        const totalPages = Math.max(1, Math.ceil(filteredData.length / recordsPerPage));
         document.getElementById('pageInfo').innerText = `Page ${currentPage} / ${totalPages}`;
         document.getElementById('prevBtn').disabled = (currentPage === 1);
         document.getElementById('nextBtn').disabled = (currentPage >= totalPages);
     }
 
     function changePage(dir) {
-        currentPage += dir;
-        renderPage();
-        window.scrollTo(0, 0);
+        const totalPages = Math.max(1, Math.ceil(filteredData.length / recordsPerPage));
+        const newPage = currentPage + dir;
+        if (newPage < 1 || newPage > totalPages) return;
+        currentPage = newPage;
+        renderTablePage();
+        const tableTop = document.querySelector('.table-wrapper');
+        if (tableTop) tableTop.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function downloadCSV() {
+        let csv = "Tarikh,Mula,Tamat,Plot,Status,Durasi,User\n";
+        const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+        filteredData.forEach(row => {
+            const isIssue = row.issue_reason !== null;
+            const isPartial = !isIssue && row.duration < 50;
+            const statusText = (isIssue ? row.issue_reason : (isPartial ? 'Separuh' : 'Berjaya')).replace(/,/g, '');
+            const displayDateObj = row.end_time ? new Date(row.end_time) : new Date(row.start_time);
+            const dateStr = displayDateObj.toLocaleDateString('ms-MY');
+            const mulaPart = row.start_time ? fmtTime(row.start_time) : '-';
+            const tamatPart = row.end_time ? fmtTime(row.end_time) : '-';
+            const plotDisplay = plotData[row.plot_name] ? `Semua ${row.plot_name}` : (row.plot_name || '');
+            const plotPart = plotDisplay.replace(/,/g, '');
+            const userPart = (row.user_email ? row.user_email.split('@')[0] : '-').replace(/,/g, '');
+            const durPart = String(row.duration || 0);
+            csv += `${dateStr},${mulaPart},${tamatPart},${plotPart},${statusText},${durPart},${userPart}\n`;
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = window.URL.createObjectURL(blob);
+        a.download = `Farm_Analytics_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+    }
+
+    // ----- DOWNLOAD REPORT (day-by-round grid + watering rhythm, .xlsx) -----
+    const NURSERY_FULL = { BNN: 'Batu Niah', UNN1: 'Ulu Niah 1', UNN2: 'Ulu Niah 2' };
+    const RHYTHM_TOLERANCE_MIN = 30;
+
+    function nurseryOfPlot(plotName) {
+        if (plotData[plotName]) return plotName; // whole-nursery record
+        for (const [nursery, plots] of Object.entries(plotData)) {
+            if (plots.includes(plotName)) return nursery;
+        }
+        return null;
+    }
+
+    function localDateISO(t) { return new Date(t).toLocaleDateString('en-CA'); } // YYYY-MM-DD, device timezone
+
+    function reportSymbol(row) {
+        if (row.issue_reason === null) return (row.duration || 0) >= 50 ? '🟢' : '🟡';
+        if (row.issue_reason === 'Hujan') return '🌧️ Hujan';
+        if (row.issue_reason === 'Spray') return 'Spray';
+        return '❌ ' + row.issue_reason;
+    }
+
+    function minutesOfDay(t) { const d = new Date(t); return d.getHours() * 60 + d.getMinutes(); }
+    function fmtMinutes(m) { return `${pad(Math.floor(m / 60))}:${pad(Math.round(m % 60))}`; }
+    function median(arr) {
+        const s = [...arr].sort((a, b) => a - b);
+        const mid = Math.floor(s.length / 2);
+        return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+    }
+
+    // Analyze every day of the selected range: cluster that day's watering
+    // sessions by start time (±30 min) into groups of plots watered together,
+    // then aggregate identical plot-groups across all days.
+    // Returns [{time, plots:[...], days}] — days = how many times that exact
+    // group ran together — most frequent first.
+    function computeRhythms(plots, eventsByPlotDate) {
+        const sessionsByDay = {}; // date -> [{plot, min}]
+        for (const plot of plots) {
+            const byDate = eventsByPlotDate[plot] || {};
+            for (const date in byDate) {
+                for (const e of byDate[date]) {
+                    if (e.row.issue_reason !== null || !e.row.start_time) continue;
+                    (sessionsByDay[date] || (sessionsByDay[date] = [])).push({ plot, min: minutesOfDay(e.row.start_time) });
+                }
+            }
+        }
+
+        const groups = {}; // 'U1, U2, U6' -> {plots, times[], days}
+        for (const date in sessionsByDay) {
+            const events = sessionsByDay[date].sort((a, b) => a.min - b.min);
+            const clusters = [];
+            for (const ev of events) {
+                const c = clusters[clusters.length - 1];
+                if (c && Math.abs(ev.min - c.mean) <= RHYTHM_TOLERANCE_MIN) {
+                    c.items.push(ev);
+                    c.mean = c.items.reduce((a, b) => a + b.min, 0) / c.items.length;
+                } else {
+                    clusters.push({ items: [ev], mean: ev.min });
+                }
+            }
+            for (const c of clusters) {
+                const plotsInGroup = [...new Set(c.items.map(i => i.plot))]
+                    .sort((a, b) => plots.indexOf(a) - plots.indexOf(b));
+                const key = plotsInGroup.join(', ');
+                const g = groups[key] || (groups[key] = { plots: plotsInGroup, times: [], days: 0 });
+                g.times.push(c.mean);
+                g.days += 1;
+            }
+        }
+
+        return Object.values(groups)
+            .map(g => ({ time: fmtMinutes(median(g.times)), plots: g.plots, days: g.days }))
+            .sort((a, b) => b.days - a.days || (a.time < b.time ? -1 : 1));
+    }
+
+    function downloadReport() {
+        if (typeof XLSX === 'undefined') {
+            alert('Modul report belum dimuat (perlu online sekali). Sila reload halaman.');
+            return;
+        }
+        if (!filteredData.length) { alert('Tiada rekod untuk dijana report.'); return; }
+
+        // Date range: the filter inputs, falling back to the data's own span
+        const dataDates = filteredData.map(r => localDateISO(r.end_time || r.start_time)).sort();
+        const startStr = document.getElementById('startDate').value || dataDates[0];
+        const endStr = document.getElementById('endDate').value || dataDates[dataDates.length - 1];
+
+        const dayList = [];
+        for (const d = new Date(startStr + 'T00:00:00'); localDateISO(d) <= endStr; d.setDate(d.getDate() + 1)) {
+            dayList.push(localDateISO(d));
+            if (dayList.length > 92) { alert('Julat tarikh terlalu besar untuk report (max 3 bulan).'); return; }
+        }
+        if (!dayList.length) { alert('Julat tarikh tidak sah.'); return; }
+
+        const sameMonth = startStr.slice(0, 7) === endStr.slice(0, 7);
+        const fmtDMY = (iso) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
+        const rangeLabel = sameMonth
+            ? new Date(startStr + 'T00:00:00').toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })
+            : `${fmtDMY(startStr)} - ${fmtDMY(endStr)}`;
+
+        // Bucket events: nursery -> plot -> date -> [ {sortKey, row} ]
+        // Whole-nursery records (plot_name = BNN/UNN1/UNN2) mark every plot in it.
+        const buckets = { BNN: {}, UNN1: {}, UNN2: {} };
+        for (const row of filteredData) {
+            const t = row.end_time || row.start_time;
+            if (!t) continue;
+            const date = localDateISO(t);
+            if (date < startStr || date > endStr) continue;
+            const nursery = nurseryOfPlot(row.plot_name);
+            if (!nursery) continue;
+            const targetPlots = plotData[row.plot_name] || [row.plot_name];
+            for (const plot of targetPlots) {
+                const byDate = buckets[nursery][plot] || (buckets[nursery][plot] = {});
+                (byDate[date] || (byDate[date] = [])).push({ sortKey: row.start_time || t, row });
+            }
+        }
+        for (const n in buckets) for (const p in buckets[n]) for (const d in buckets[n][p]) {
+            buckets[n][p][d].sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1));
+        }
+
+        const locFilter = document.getElementById('locSelect').value;
+        const plotFilter = document.getElementById('plotSelect').value;
+        const nurseries = locFilter !== 'ALL' ? [locFilter] : ['BNN', 'UNN1', 'UNN2'];
+
+        const wb = XLSX.utils.book_new();
+        for (const nursery of nurseries) {
+            const plots = (plotFilter !== 'ALL' && plotData[nursery].includes(plotFilter))
+                ? [plotFilter]
+                : plotData[nursery];
+
+            let maxRounds = 3;
+            for (const plot of plots) {
+                const byDate = buckets[nursery][plot] || {};
+                for (const d in byDate) maxRounds = Math.max(maxRounds, byDate[d].length);
+            }
+
+            const aoa = [
+                ['Watering Record'],
+                [NURSERY_FULL[nursery] || nursery],
+                [rangeLabel],
+                []
+            ];
+            const merges = [];
+            const plotHeader = [''];
+            const roundHeader = [sameMonth ? 'Hari' : 'Tarikh'];
+            plots.forEach((plot, i) => {
+                const c0 = 1 + i * maxRounds;
+                plotHeader[c0] = plot;
+                for (let r = 1; r <= maxRounds; r++) roundHeader[c0 + r - 1] = `Round ${r}`;
+                if (maxRounds > 1) merges.push({ s: { r: 4, c: c0 }, e: { r: 4, c: c0 + maxRounds - 1 } });
+            });
+            aoa.push(plotHeader, roundHeader);
+
+            for (const date of dayList) {
+                const rowArr = [sameMonth ? Number(date.slice(8, 10)) : fmtDMY(date).slice(0, 5)];
+                plots.forEach((plot, i) => {
+                    const events = (buckets[nursery][plot] || {})[date] || [];
+                    events.forEach((e, r) => { rowArr[1 + i * maxRounds + r] = reportSymbol(e.row); });
+                });
+                aoa.push(rowArr);
+            }
+
+            aoa.push([]);
+            aoa.push(['Petunjuk:', '🟢 Berjaya (≥50 min)', '🟡 Separuh (<50 min)', '🌧️ Hujan', 'Spray', '❌ Isu lain (Rosak/Banjir/Kosong/...)']);
+            aoa.push([]);
+            aoa.push([`Rhythm Siraman (plot disiram serentak, ± ${RHYTHM_TOLERANCE_MIN} min) — analisis hari demi hari, ${fmtDMY(dayList[0])} hingga ${fmtDMY(dayList[dayList.length - 1])}`]);
+            const rhythms = computeRhythms(plots, buckets[nursery]);
+            if (rhythms.length) {
+                aoa.push(['', 'Masa', 'Plot', 'Kekerapan']);
+                rhythms.forEach((r, i) => aoa.push([`Rhythm ${i + 1}`, `~${r.time}`, r.plots.join(', '), `${r.days} kali`]));
+            } else {
+                aoa.push(['Tiada data siraman berjaya dalam julat ini.']);
+            }
+
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            ws['!merges'] = merges;
+            ws['!cols'] = [{ wch: 8 }].concat(Array(plots.length * maxRounds).fill({ wch: 10 }));
+            XLSX.utils.book_append_sheet(wb, ws, nursery);
+        }
+
+        const fileTag = sameMonth ? startStr.slice(0, 7) : `${startStr}_${endStr}`;
+        XLSX.writeFile(wb, `Watering_Report_${fileTag}.xlsx`);
     }
 
     let userBadgePopupTimer = null;
@@ -415,8 +747,9 @@
         const badge = document.getElementById('userBadge');
         if (badge && currentUser) badge.textContent = currentUser.split('@')[0];
         populateNurseryOptions();
-        populatePlotOptions();
-        fetchAll();
+        document.getElementById('startDate').value = getMonthStart();
+        document.getElementById('endDate').value = getToday();
+        loadData();
     };
 
     async function logout() {
@@ -431,6 +764,9 @@
         window.location.href = "index.html";
     }
 </script>
+
+<div id="wlNav" style="display:none; margin-top: 50px; padding: 20px; border-top: 1px solid #ddd; text-align: center;"></div>
+<script>renderWateringNav('records');</script>
 
 <div style="text-align: center; margin-top: 40px; padding-bottom: 20px;">
     <hr style="border: 0; border-top: 1px solid #eee; width: 80%; margin: 20px auto;">
