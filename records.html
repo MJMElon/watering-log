@@ -272,12 +272,10 @@
 
     function pad(n) { return String(n).padStart(2, '0'); }
     function getMonthStart() {
-        const d = new Date();
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`;
+        return farmMonthValue(new Date()) + '-01';
     }
     function getToday() {
-        const d = new Date();
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        return farmYmd(new Date());
     }
 
     function populateNurseryOptions() {
@@ -313,8 +311,8 @@
             let query = _supabase.from('watering_logs').select('*')
                 .order('end_time', { ascending: false })
                 .range(from, from + PAGE - 1);
-            if (start) query = query.gte('end_time', start + 'T00:00:00');
-            if (end) query = query.lte('end_time', end + 'T23:59:59');
+            if (start) query = query.gte('end_time', farmDayStartISO(start));
+            if (end) query = query.lt('end_time', farmDayEndExclusiveISO(end));
 
             const { data, error } = await query;
             if (error) {
@@ -348,8 +346,8 @@
         if (current !== 'ALL' && workers.includes(current)) select.value = current;
     }
 
-    // "Masa Dari/Hingga" work on the clock time of day, in the phone's own
-    // timezone, so 07:00–12:00 means the morning round regardless of date.
+    // "Masa Dari/Hingga" work on the Asia/Kuala_Lumpur clock, so 07:00–12:00
+    // means the morning round on the farm regardless of the phone's timezone.
     function parseHHMM(v) {
         if (!v) return null;
         const [h, m] = v.split(':').map(Number);
@@ -368,12 +366,15 @@
 
         let filtered = fullData;
 
-        // Date range uses end_time, falling back to start_time for issue reports
-        if (start) {
-            filtered = filtered.filter(d => (d.end_time || d.start_time) >= start + 'T00:00:00');
-        }
-        if (end) {
-            filtered = filtered.filter(d => (d.end_time || d.start_time) <= end + 'T23:59:59');
+        // Date range uses end_time, falling back to start_time for issue reports.
+        // Bounds are Malaysia midnights, compared as instants (stored values are UTC).
+        if (start || end) {
+            const startMs = start ? new Date(farmDayStartISO(start)).getTime() : -Infinity;
+            const endMs = end ? new Date(farmDayEndExclusiveISO(end)).getTime() : Infinity;
+            filtered = filtered.filter(d => {
+                const t = new Date(d.end_time || d.start_time).getTime();
+                return t >= startMs && t < endMs;
+            });
         }
 
         // Time-of-day window, based on when the session STARTED
@@ -471,11 +472,11 @@
             return;
         }
 
-        const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
+        const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: FARM_TZ });
 
         tbody.innerHTML = pageItems.map(row => {
             const displayTime = row.end_time ? row.end_time : row.start_time;
-            const dateStr = new Date(displayTime).toLocaleDateString('ms-MY', { day: '2-digit', month: '2-digit' });
+            const dateStr = new Date(displayTime).toLocaleDateString('ms-MY', { day: '2-digit', month: '2-digit', timeZone: FARM_TZ });
             const startTimeStr = row.start_time ? fmtTime(row.start_time) : '-';
             const endTimeStr = row.end_time ? fmtTime(row.end_time) : '-';
 
@@ -533,14 +534,14 @@
 
     function downloadCSV() {
         let csv = "Tarikh,Mula,Tamat,Plot,Status,Durasi,User\n";
-        const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit' });
+        const fmtTime = (t) => new Date(t).toLocaleTimeString('ms-MY', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: FARM_TZ });
 
         filteredData.forEach(row => {
             const isIssue = row.issue_reason !== null;
             const isPartial = !isIssue && row.duration < 50;
             const statusText = (isIssue ? row.issue_reason : (isPartial ? 'Separuh' : 'Berjaya')).replace(/,/g, '');
             const displayDateObj = row.end_time ? new Date(row.end_time) : new Date(row.start_time);
-            const dateStr = displayDateObj.toLocaleDateString('ms-MY');
+            const dateStr = displayDateObj.toLocaleDateString('ms-MY', { timeZone: FARM_TZ });
             const mulaPart = row.start_time ? fmtTime(row.start_time) : '-';
             const tamatPart = row.end_time ? fmtTime(row.end_time) : '-';
             const plotDisplay = plotData[row.plot_name] ? `Semua ${row.plot_name}` : (row.plot_name || '');
@@ -553,7 +554,7 @@
         const blob = new Blob([csv], { type: 'text/csv' });
         const a = document.createElement('a');
         a.href = window.URL.createObjectURL(blob);
-        a.download = `Farm_Analytics_${new Date().toISOString().split('T')[0]}.csv`;
+        a.download = `Farm_Analytics_${farmYmd(new Date())}.csv`;
         a.click();
     }
 
@@ -569,7 +570,7 @@
         return null;
     }
 
-    function localDateISO(t) { return new Date(t).toLocaleDateString('en-CA'); } // YYYY-MM-DD, device timezone
+    function localDateISO(t) { return farmYmd(t); } // YYYY-MM-DD in Asia/Kuala_Lumpur
 
     function reportSymbol(row) {
         if (row.issue_reason === null) return (row.duration || 0) >= 50 ? '🟢' : '🟡';
@@ -578,7 +579,7 @@
         return '❌ ' + row.issue_reason;
     }
 
-    function minutesOfDay(t) { const d = new Date(t); return d.getHours() * 60 + d.getMinutes(); }
+    function minutesOfDay(t) { return farmMinutesOfDay(t); }
     function fmtMinutes(m) { return `${pad(Math.floor(m / 60))}:${pad(Math.round(m % 60))}`; }
     function median(arr) {
         const s = [...arr].sort((a, b) => a - b);
@@ -639,13 +640,13 @@
         if (!filteredData.length) { alert('Tiada rekod untuk dijana report.'); return; }
 
         // Date range: the filter inputs, falling back to the data's own span
-        const dataDates = filteredData.map(r => localDateISO(r.end_time || r.start_time)).sort();
+        const dataDates = filteredData.map(r => localDateISO(r.end_time || r.start_time)).filter(Boolean).sort();
         const startStr = document.getElementById('startDate').value || dataDates[0];
         const endStr = document.getElementById('endDate').value || dataDates[dataDates.length - 1];
 
         const dayList = [];
-        for (const d = new Date(startStr + 'T00:00:00'); localDateISO(d) <= endStr; d.setDate(d.getDate() + 1)) {
-            dayList.push(localDateISO(d));
+        for (let cursor = startStr; cursor && cursor <= endStr; cursor = farmAddDays(cursor, 1)) {
+            dayList.push(cursor);
             if (dayList.length > 92) { alert('Julat tarikh terlalu besar untuk report (max 3 bulan).'); return; }
         }
         if (!dayList.length) { alert('Julat tarikh tidak sah.'); return; }
@@ -653,7 +654,7 @@
         const sameMonth = startStr.slice(0, 7) === endStr.slice(0, 7);
         const fmtDMY = (iso) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
         const rangeLabel = sameMonth
-            ? new Date(startStr + 'T00:00:00').toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })
+            ? new Date(startStr + 'T12:00:00' + FARM_TZ_OFFSET).toLocaleDateString('en-MY', { month: 'short', year: 'numeric', timeZone: FARM_TZ })
             : `${fmtDMY(startStr)} - ${fmtDMY(endStr)}`;
 
         // Bucket events: nursery -> plot -> date -> [ {sortKey, row} ]

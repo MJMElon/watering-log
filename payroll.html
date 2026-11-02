@@ -439,9 +439,7 @@
             document.getElementById('content').style.display = '';
             document.getElementById('userBadge').textContent = currentUser.split('@')[0];
 
-            const now = new Date();
-            const monthValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-            document.getElementById('monthPicker').value = monthValue;
+            document.getElementById('monthPicker').value = farmMonthValue(new Date());
             loadMonth();
         } catch (e) {
             // Async threw (rare) — don't disrupt. Leave loading state.
@@ -604,10 +602,8 @@
 
     async function fetchSessionsForMonth(monthValue) {
         const [year, month] = monthValue.split('-').map(Number);
-        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-        const nextMonth = month === 12 ? 1 : month + 1;
-        const nextYear = month === 12 ? year + 1 : year;
-        const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+        // Malaysia month: 1 Nov 00:00 MYT through 1 Dec 00:00 MYT, not UTC midnight.
+        const bounds = farmMonthBoundsISO(year, month);
 
         // Supabase default response is capped at 1000 rows. Paginate to fetch
         // the entire month, otherwise recent inserts get silently dropped.
@@ -617,8 +613,8 @@
         for (;;) {
             const { data, error } = await _supabase.from('watering_logs')
                 .select('plot_name, duration, issue_reason, end_time, start_time')
-                .gte('end_time', startDate + 'T00:00:00')
-                .lt('end_time', endDate + 'T00:00:00')
+                .gte('end_time', bounds.gte)
+                .lt('end_time', bounds.lt)
                 .order('id', { ascending: true })
                 .range(from, from + PAGE - 1);
             if (error) { console.error('fetchSessionsForMonth:', error); return { sessions: {}, rainingDays: {} }; }
@@ -633,7 +629,7 @@
             // Raining day: any record with issue_reason = 'Hujan', dedupe by date per plot.
             // If plot_name is an area code (e.g. 'BNN'), expand to every plot in that area.
             if (r.issue_reason === 'Hujan') {
-                const isoDate = (r.end_time || r.start_time || '').slice(0, 10);
+                const isoDate = farmYmd(r.end_time || r.start_time);
                 if (isoDate) {
                     const plotsToMark = plotData[r.plot_name] || [r.plot_name];
                     for (const plot of plotsToMark) {
