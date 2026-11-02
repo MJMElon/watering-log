@@ -105,3 +105,74 @@
         }
     };
 })();
+
+// Malaysia farm calendar (Asia/Kuala_Lumpur).
+// watering_logs stores UTC timestamps. Day and month buckets must use this
+// zone: 07:00 MYT on Nov 2 is 2026-11-01T23:00:00Z, and slicing the UTC date
+// would count it as Nov 1. MYT is UTC+8 with no daylight saving, so a
+// calendar day's UTC bounds are that date at 00:00+08:00 through the next
+// midnight. Phones set to another timezone still follow the farm day.
+const FARM_TZ = 'Asia/Kuala_Lumpur';
+const FARM_TZ_OFFSET = '+08:00';
+
+// Fixed offset of Asia/Kuala_Lumpur. Reading shifted UTC fields avoids the
+// Intl midnight "24" hour bug on some phones. Display still passes FARM_TZ.
+const FARM_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function farmDateParts(value) {
+    if (value == null || value === '') return null;
+    const d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return null;
+    const shifted = new Date(d.getTime() + FARM_OFFSET_MS);
+    return {
+        ymd: shifted.toISOString().slice(0, 10),
+        hour: shifted.getUTCHours(),
+        minute: shifted.getUTCMinutes()
+    };
+}
+
+// YYYY-MM-DD in Asia/Kuala_Lumpur. Empty string if the timestamp is missing or invalid.
+function farmYmd(value) {
+    const p = farmDateParts(value);
+    return p ? p.ymd : '';
+}
+
+// YYYY-MM of the Malaysia calendar month containing this instant.
+function farmMonthValue(value) {
+    const ymd = farmYmd(value);
+    return ymd ? ymd.slice(0, 7) : '';
+}
+
+// Inclusive start of a Malaysia calendar day, as a UTC ISO timestamp.
+function farmDayStartISO(ymd) {
+    return new Date(ymd + 'T00:00:00' + FARM_TZ_OFFSET).toISOString();
+}
+
+// Exclusive end of a Malaysia calendar day (start of the next MYT day), UTC ISO.
+function farmDayEndExclusiveISO(ymd) {
+    const start = new Date(ymd + 'T00:00:00' + FARM_TZ_OFFSET);
+    return new Date(start.getTime() + 24 * 60 * 60 * 1000).toISOString();
+}
+
+// [gte, lt) UTC bounds for a Malaysia calendar month. month is 1–12.
+function farmMonthBoundsISO(year, month) {
+    const startYmd = year + '-' + String(month).padStart(2, '0') + '-01';
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const endYmd = nextYear + '-' + String(nextMonth).padStart(2, '0') + '-01';
+    return { gte: farmDayStartISO(startYmd), lt: farmDayStartISO(endYmd) };
+}
+
+// Minutes since Malaysia midnight. Used by the Rekod clock filter and rhythm report.
+function farmMinutesOfDay(value) {
+    const p = farmDateParts(value);
+    if (!p) return NaN;
+    return p.hour * 60 + p.minute;
+}
+
+// Step a YYYY-MM-DD farm date by whole Malaysia days.
+function farmAddDays(ymd, days) {
+    const start = new Date(ymd + 'T00:00:00' + FARM_TZ_OFFSET);
+    if (isNaN(start.getTime())) return '';
+    return farmYmd(new Date(start.getTime() + days * 24 * 60 * 60 * 1000));
+}

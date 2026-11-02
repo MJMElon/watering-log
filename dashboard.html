@@ -209,13 +209,9 @@
     }
 
     async function fetchLiveAchSessions() {
-        const now = new Date();
-        const y = now.getFullYear();
-        const m = now.getMonth() + 1;
-        const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
-        const nm = m === 12 ? 1 : m + 1;
-        const ny = m === 12 ? y + 1 : y;
-        const endDate = `${ny}-${String(nm).padStart(2, '0')}-01`;
+        // Current Malaysia month, not the phone timezone and not UTC midnight.
+        const [y, m] = farmMonthValue(new Date()).split('-').map(Number);
+        const bounds = farmMonthBoundsISO(y, m);
 
         // Supabase default response is capped at 1000 rows. Paginate to fetch
         // the entire month, otherwise recent inserts get silently dropped.
@@ -225,8 +221,8 @@
         for (;;) {
             const { data, error } = await _supabase.from('watering_logs')
                 .select('plot_name, duration, issue_reason, end_time, start_time')
-                .gte('end_time', startDate + 'T00:00:00')
-                .lt('end_time', endDate + 'T00:00:00')
+                .gte('end_time', bounds.gte)
+                .lt('end_time', bounds.lt)
                 .order('id', { ascending: true })
                 .range(from, from + PAGE - 1);
             if (error) {
@@ -242,7 +238,7 @@
         const rainingDateSets = {};
         for (const r of allRows) {
             if (r.issue_reason === 'Hujan') {
-                const isoDate = (r.end_time || r.start_time || '').slice(0, 10);
+                const isoDate = farmYmd(r.end_time || r.start_time);
                 if (isoDate) {
                     const plotsToMark = plotData[r.plot_name] || [r.plot_name];
                     for (const p of plotsToMark) {
@@ -267,7 +263,8 @@
         const { targets = {}, operators = {} } = liveAchConfig || {};
         const now = new Date();
         const fetchedAt = fetchedAtIso ? new Date(fetchedAtIso) : now;
-        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const [farmYear, farmMonth] = farmMonthValue(now).split('-').map(Number);
+        const daysInMonth = new Date(farmYear, farmMonth, 0).getDate();
         const fmtNumber = (n) => Number(n).toLocaleString('en-MY');
 
         // Toggle the header dot between live (red, blinking) and offline (gray, static)
@@ -328,11 +325,11 @@
                 </div>`;
         }).join('');
 
-        const monthName = now.toLocaleDateString('en-MY', { month: 'short', year: 'numeric' });
-        const sameDay = fetchedAt.toDateString() === now.toDateString();
+        const monthName = new Date(Date.UTC(farmYear, farmMonth - 1, 1)).toLocaleDateString('en-MY', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+        const sameDay = farmYmd(fetchedAt) === farmYmd(now);
         const updatedAt = sameDay
-            ? fetchedAt.toLocaleTimeString('ms-MY')
-            : fetchedAt.toLocaleString('ms-MY', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            ? fetchedAt.toLocaleTimeString('ms-MY', { timeZone: FARM_TZ })
+            : fetchedAt.toLocaleString('ms-MY', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: FARM_TZ });
         const cacheTag = isCached ? ' <span class="live-ach-cache-tag">(Cache)</span>' : '';
 
         container.innerHTML = `
