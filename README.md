@@ -30,9 +30,8 @@ The worker form, Dashboard, Rekod, and Payroll read the plot list from `plots.js
 
 An admin opens **Tetapan** from the nav bar on Rekod, Dashboard, or Payroll. Workers, FCs, and other accounts do not get the button, and opening `settings.html` directly sends them to the dashboard.
 
-- **Tambah plot** — pick BNN, UNN1, or UNN2 and a plot name (for example `B15`). The plot shows up on the worker form (including offline, after the phone has loaded the list once), on the live Dashboard, in Rekod filters, and as a new bibit row in Payroll. Area bibit totals include it.
-- **Nyahaktifkan** — asks for confirmation, then sets `active` to false. The row is not deleted. The plot leaves the worker form, the live Dashboard, and new Payroll entry. Old `watering_logs`, the bibit number already stored, and saved payroll snapshots stay. Rekod, CSV, and the xlsx report still show that plot for ranges that contain its records.
-- **Aktifkan semula** — puts the plot back, including its saved bibit count.
+- **Tambah plot** — pick BNN, UNN1, or UNN2 and a plot name (for example `B15`). The plot shows up on the worker form (including offline, after the phone has loaded the list once), on the live Dashboard, in Rekod filters, and as a new bibit row in Payroll. Area bibit totals include it. Typing a name that was previously removed turns that row active again, including its saved bibit count.
+- **Buang** — asks for confirmation, then sets `active` to false. The row is not deleted, and it disappears from the Tetapan list. The plot leaves the worker form and the live Dashboard. On Payroll it also leaves a month that has no watering record for it and no saved claim row for it. A month that still has a watering record, or a saved claim that already includes the plot, keeps the bibit row so updating that month does not drop the old claim. Rekod, CSV, and the xlsx report still show the plot for ranges that contain its records.
 
 Run this once in the Supabase SQL Editor (Dashboard → SQL Editor → paste → Run):
 
