@@ -2,11 +2,12 @@
 // Draws the Rekod / Dashboard / Payroll Report buttons on every page.
 //
 // Who sees which buttons:
-//   admin   → Rekod, Dashboard, Payroll Report
+//   admin   → Rekod, Dashboard, Payroll Report, Tetapan
 //   worker  → Rekod, Dashboard
 //   FC      → none
 //   anyone else (merged-app users) → none
 // The button for the page you are already on is left out.
+// Tetapan is admin-only. The page itself also checks watering_admins.
 //
 // The bar starts hidden and only appears once the role is known, so a Field
 // Coordinator never sees a flash of buttons they shouldn't have. The answer is
@@ -22,11 +23,12 @@
     const BTN = {
         records:   { href: 'records.html',   label: '📋 Rekod',          bg: '#6c757d' },
         dashboard: { href: 'dashboard.html', label: '📊 Dashboard',      bg: '#007bff' },
-        payroll:   { href: 'payroll.html',   label: '💰 Payroll Report', bg: '#6f42c1' }
+        payroll:   { href: 'payroll.html',   label: '💰 Payroll Report', bg: '#6f42c1' },
+        settings:  { href: 'settings.html',  label: '⚙️ Tetapan',        bg: '#138496' }
     };
 
     const BUTTONS_FOR_ROLE = {
-        admin:  ['records', 'dashboard', 'payroll'],
+        admin:  ['records', 'dashboard', 'payroll', 'settings'],
         worker: ['records', 'dashboard'],
         fc:     [],
         other:  []
@@ -81,7 +83,7 @@
         return 'other';
     }
 
-    // currentPage: 'records' | 'dashboard' | 'payroll' | '' (home)
+    // currentPage: 'records' | 'dashboard' | 'payroll' | 'settings' | '' (home)
     window.renderWateringNav = async function (currentPage, client) {
         const email = localStorage.getItem('loggedInUser');
         if (!email) return;

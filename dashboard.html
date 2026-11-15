@@ -392,6 +392,11 @@
     }
 
     async function refreshLiveAchievement() {
+        // Active plots only. A hidden plot drops off this live card; Rekod
+        // still has its history. Failure leaves the built-in / cached list.
+        if (typeof loadWateringPlots === 'function') {
+            try { await loadWateringPlots(_supabase); } catch (e) { /* keep current list */ }
+        }
         // Skip network attempt entirely when offline — keeps the existing cached
         // render visible instead of blanking it out to 0% across the board.
         if (!navigator.onLine) {
