@@ -278,6 +278,19 @@
         return farmYmd(new Date());
     }
 
+    // allPlotData includes hidden plots so old rows still match a nursery.
+    // plotData is the active list used by the form, dashboard, and payroll.
+    function knownPlots(nursery) {
+        if (typeof allPlotData !== 'undefined' && allPlotData && allPlotData[nursery]) return allPlotData[nursery];
+        return (plotData && plotData[nursery]) || [];
+    }
+
+    function areaPlotList(plotName) {
+        if (typeof allPlotData !== 'undefined' && allPlotData && allPlotData[plotName]) return allPlotData[plotName];
+        if (plotData && plotData[plotName]) return plotData[plotName];
+        return null;
+    }
+
     function populateNurseryOptions() {
         const sel = document.getElementById('locSelect');
         Object.keys(plotData).forEach(n => {
@@ -292,8 +305,11 @@
         const loc = document.getElementById('locSelect').value;
         const plotDropdown = document.getElementById('plotSelect');
         plotDropdown.innerHTML = '<option value="ALL">Semua</option>';
-        if (loc !== "ALL" && plotData[loc]) {
-            plotData[loc].forEach(p => plotDropdown.add(new Option(p, p)));
+        if (loc !== "ALL") {
+            const active = new Set(plotData[loc] || []);
+            knownPlots(loc).forEach(p => {
+                plotDropdown.add(new Option(active.has(p) ? p : (p + ' (nyahaktif)'), p));
+            });
         }
         runFilter();
     }
@@ -390,8 +406,9 @@
         }
 
         if (loc !== "ALL") {
+            const known = knownPlots(loc);
             filtered = filtered.filter(d => d.plot_name &&
-                (d.plot_name.startsWith(loc) || (plotData[loc] && plotData[loc].includes(d.plot_name))));
+                (d.plot_name.startsWith(loc) || known.includes(d.plot_name)));
         }
         if (plot !== "ALL") filtered = filtered.filter(d => d.plot_name === plot);
         if (worker !== "ALL") filtered = filtered.filter(d => d.user_email === worker);
@@ -421,8 +438,10 @@
             const isIssue = row.issue_reason !== null;
             const isPartial = !isIssue && row.duration < 50;
             if (isIssue) {
-                // Area-wide issues (plot_name = area code) count once per plot in that area
-                const multiplier = plotData[row.plot_name] ? plotData[row.plot_name].length : 1;
+                // Area-wide issues (plot_name = area code) count once per known plot,
+                // including plots an admin has since hidden, so old totals stay.
+                const areaPlots = areaPlotList(row.plot_name);
+                const multiplier = areaPlots ? areaPlots.length : 1;
                 totalIssueCount += multiplier;
                 issueTypes[row.issue_reason] = (issueTypes[row.issue_reason] || 0) + multiplier;
             } else if (isPartial) {
@@ -544,7 +563,7 @@
             const dateStr = displayDateObj.toLocaleDateString('ms-MY', { timeZone: FARM_TZ });
             const mulaPart = row.start_time ? fmtTime(row.start_time) : '-';
             const tamatPart = row.end_time ? fmtTime(row.end_time) : '-';
-            const plotDisplay = plotData[row.plot_name] ? `Semua ${row.plot_name}` : (row.plot_name || '');
+            const plotDisplay = areaPlotList(row.plot_name) ? `Semua ${row.plot_name}` : (row.plot_name || '');
             const plotPart = plotDisplay.replace(/,/g, '');
             const userPart = (row.user_email ? row.user_email.split('@')[0] : '-').replace(/,/g, '');
             const durPart = String(row.duration || 0);
@@ -563,8 +582,9 @@
     const RHYTHM_TOLERANCE_MIN = 30;
 
     function nurseryOfPlot(plotName) {
-        if (plotData[plotName]) return plotName; // whole-nursery record
-        for (const [nursery, plots] of Object.entries(plotData)) {
+        const book = (typeof allPlotData !== 'undefined' && allPlotData) ? allPlotData : plotData;
+        if (book[plotName]) return plotName; // whole-nursery record
+        for (const [nursery, plots] of Object.entries(book)) {
             if (plots.includes(plotName)) return nursery;
         }
         return null;
@@ -667,7 +687,7 @@
             if (date < startStr || date > endStr) continue;
             const nursery = nurseryOfPlot(row.plot_name);
             if (!nursery) continue;
-            const targetPlots = plotData[row.plot_name] || [row.plot_name];
+            const targetPlots = areaPlotList(row.plot_name) || [row.plot_name];
             for (const plot of targetPlots) {
                 const byDate = buckets[nursery][plot] || (buckets[nursery][plot] = {});
                 (byDate[date] || (byDate[date] = [])).push({ sortKey: row.start_time || t, row });
@@ -683,9 +703,14 @@
 
         const wb = XLSX.utils.book_new();
         for (const nursery of nurseries) {
-            const plots = (plotFilter !== 'ALL' && plotData[nursery].includes(plotFilter))
+            // Active plots always get a column. A hidden plot gets one only
+            // when this date range actually has records for it (including a
+            // whole-nursery row expanded onto it above).
+            const active = new Set(plotData[nursery] || []);
+            const allKnown = knownPlots(nursery);
+            const plots = (plotFilter !== 'ALL' && allKnown.includes(plotFilter))
                 ? [plotFilter]
-                : plotData[nursery];
+                : allKnown.filter(p => active.has(p) || (buckets[nursery] && buckets[nursery][p]));
 
             let maxRounds = 3;
             for (const plot of plots) {
@@ -762,9 +787,12 @@
         if (userBadgePopupTimer) { clearTimeout(userBadgePopupTimer); userBadgePopupTimer = null; }
     }
 
-    window.onload = () => {
+    window.onload = async () => {
         const badge = document.getElementById('userBadge');
         if (badge && currentUser) badge.textContent = currentUser.split('@')[0];
+        if (typeof loadWateringPlots === 'function') {
+            try { await loadWateringPlots(_supabase); } catch (e) { /* built-in list */ }
+        }
         populateNurseryOptions();
         document.getElementById('startDate').value = getMonthStart();
         document.getElementById('endDate').value = getToday();

@@ -523,6 +523,9 @@
         const monthValue = document.getElementById('monthPicker').value;
         if (!monthValue) return;
         document.getElementById('saveBtn').disabled = true;
+        if (typeof loadWateringPlots === 'function') {
+            try { await loadWateringPlots(_supabase); } catch (e) { /* built-in list */ }
+        }
 
         // Flush any unsaved in-memory inputs to DB before fetching the new month
         await saveAllInputsToDB();
@@ -539,12 +542,21 @@
 
         seedlingsByPlot = {};
         targetsByPlot = {};
-        for (const plot in PLOT_SEEDLINGS) {
+        // Entry grid is active plots only, so a hidden plot is not a new
+        // bibit row and is not included in the area total. Its existing
+        // watering_plot_seedlings row is left untouched (not in this map,
+        // so the flush upsert does not write it) and comes back on restore.
+        // A plot added in Tetapan is not in PLOT_SEEDLINGS; no row means 0.
+        const activeNames = [];
+        ['BNN', 'UNN1', 'UNN2'].forEach((area) => {
+            (plotData[area] || []).forEach((plot) => activeNames.push(plot));
+        });
+        activeNames.forEach((plot) => {
             seedlingsByPlot[plot] = (inputs.seedlings[plot] != null)
                 ? inputs.seedlings[plot]
                 : (PLOT_SEEDLINGS[plot] || 0);
             targetsByPlot[plot] = inputs.targets[plot] || 0;
-        }
+        });
         operatorsByArea = {};
         for (const area in AREA_OPERATORS) {
             operatorsByArea[area] = inputs.operators[area] || AREA_OPERATORS[area] || '';

@@ -272,10 +272,43 @@ function closeUserBadgePopup() {
     }
 }
 
+// Keep a plot the worker already picked if it is still in the new list.
+function resyncOpenPlotDropdowns() {
+    const pairs = [
+        ['locationSelect', 'plotSelect', false],
+        ['issueLocationSelect', 'issuePlotSelect', true]
+    ];
+    pairs.forEach(([locId, plotId, includeAll]) => {
+        const loc = document.getElementById(locId);
+        const plot = document.getElementById(plotId);
+        if (!loc || !plot || !loc.value) return;
+        const previous = plot.value;
+        syncPlotOptions(locId, plotId, includeAll);
+        if (previous && Array.from(plot.options).some((opt) => opt.value === previous)) {
+            plot.value = previous;
+        }
+    });
+    const adminLoc = document.getElementById('adminLokasi');
+    const adminPlot = document.getElementById('adminPlot');
+    if (adminLoc && adminPlot && adminLoc.value) {
+        const previous = adminPlot.value;
+        adminSyncPlots();
+        if (previous && Array.from(adminPlot.options).some((opt) => opt.value === previous)) {
+            adminPlot.value = previous;
+        }
+    }
+}
+
 // --- UPDATED ONLOAD (With Migration) ---
 window.onload = async function() {
     displayUserBadge();
     checkAdminAndShowPayrollButton();
+    if (typeof loadWateringPlots === 'function') {
+        try {
+            await loadWateringPlots(_supabase);
+            resyncOpenPlotDropdowns();
+        } catch (e) { /* built-in list stays in plotData */ }
+    }
 
     const saved = localStorage.getItem('activeWateringSessions');
     if (saved) {
@@ -614,12 +647,23 @@ async function fetchLatestRecords() {
     let totalMinutes = 0;
 
     for (const [tabId, prefix] of Object.entries(locMap)) {
-        const { data, error } = await _supabase
+        // Prefix still covers the original names (B*, U*, N*). A plot whose
+        // name does not start with that letter is added explicitly so it
+        // still shows under its nursery. Hidden plots stay in this history.
+        const known = (typeof allPlotData !== 'undefined' && allPlotData[tabId]) ? allPlotData[tabId] : [];
+        const extras = known.filter((name) => String(name).toUpperCase().indexOf(prefix.toUpperCase()) !== 0);
+        let query = _supabase
             .from('watering_logs')
             .select('*')
-            .ilike('plot_name', `${prefix}%`) // This is the fix: prefix (B, U, N)
             .order('end_time', { ascending: false })
             .limit(10);
+        if (extras.length) {
+            const list = extras.map((name) => '"' + String(name).replace(/"/g, '') + '"').join(',');
+            query = query.or('plot_name.ilike.' + prefix + '%,plot_name.in.(' + list + ')');
+        } else {
+            query = query.ilike('plot_name', prefix + '%');
+        }
+        const { data, error } = await query;
 
         if (error) {
             console.error(`Supabase Error for ${tabId}:`, error);
@@ -679,7 +723,15 @@ async function logout() {
     window.location.href = "index.html";
 }
 
-window.addEventListener('online', syncOfflineData);
+window.addEventListener('online', async () => {
+    if (typeof loadWateringPlots === 'function') {
+        try {
+            await loadWateringPlots(_supabase);
+            resyncOpenPlotDropdowns();
+        } catch (e) { /* keep the list already on screen */ }
+    }
+    syncOfflineData();
+});
 setInterval(async () => {
     if (!navigator.onLine) return;
     const count = await db.pending_queue.count();

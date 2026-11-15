@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+    <title>Tetapan</title>
+    <link rel="apple-touch-icon" href="icon-512.png">
+    <link rel="icon" type="image/png" href="icon-512.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Siram Go!">
+    <link rel="manifest" href="manifest.json">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <script src="plots.js"></script>
+    <script src="nav.js"></script>
+    <script src="sw-register.js"></script>
+
+    <style>
+        :root {
+            --dark: #343a40;
+            --bg: #f4f7f6;
+            --primary: #28a745;
+        }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: var(--bg); color: #333; margin: 0; }
+        .container { max-width: 800px; margin: auto; padding: 10px; }
+        .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+        .header h1 { margin: 0; line-height: 1.2; font-size: 26px; }
+        .nav-btn { text-decoration: none; color: white; background: var(--dark); padding: 10px 20px; border-radius: 8px; font-weight: bold; }
+        .lede { color: #666; font-size: 13px; margin: 0 0 16px; }
+        .settings-section { background: white; padding: 18px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 16px; }
+        .settings-section h2 { margin: 0 0 8px; font-size: 18px; }
+        .settings-section p { margin: 0 0 14px; font-size: 13px; color: #555; line-height: 1.45; }
+        .banner { padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; line-height: 1.4; }
+        .banner.warn { background: #fff3cd; color: #856404; }
+        .banner.ok { background: #d4edda; color: #155724; }
+        .banner.err { background: #f8d7da; color: #721c24; }
+        .add-row { display: grid; grid-template-columns: 120px 1fr auto; gap: 8px; align-items: end; margin-bottom: 16px; }
+        .add-row label { display: block; font-size: 11px; font-weight: bold; color: #666; margin-bottom: 4px; text-transform: uppercase; }
+        .add-row select, .add-row input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; box-sizing: border-box; background: white; }
+        .btn-add, .btn-hide, .btn-restore { border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .btn-add { background: var(--primary); color: white; padding: 10px 14px; font-size: 14px; }
+        .btn-add:disabled, .btn-hide:disabled, .btn-restore:disabled { background: #adb5bd; cursor: not-allowed; }
+        .nursery-block { border: 1px solid #e3eee3; border-radius: 8px; overflow: hidden; margin-bottom: 12px; }
+        .nursery-block h3 { margin: 0; padding: 10px 12px; background: #eef5ee; color: #155724; font-size: 15px; }
+        .plot-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .plot-table th, .plot-table td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; text-align: left; }
+        .plot-table th { font-size: 11px; color: #777; text-transform: uppercase; background: #fafafa; }
+        .plot-table tr.inactive td { color: #999; }
+        .badge { display: inline-block; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 999px; }
+        .badge.on { background: #d4edda; color: #155724; }
+        .badge.off { background: #eee; color: #666; }
+        .btn-hide { background: #6c757d; color: white; padding: 6px 10px; font-size: 12px; }
+        .btn-restore { background: #138496; color: white; padding: 6px 10px; font-size: 12px; }
+        #loadingState { padding: 24px; text-align: center; color: #666; }
+        @media (max-width: 600px) {
+            body { padding: 10px; }
+            .header h1 { font-size: 22px; }
+            .add-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="loadingState">Mengesahkan akses...</div>
+
+<div id="content" class="container" style="display:none;">
+    <div class="header">
+        <h1>⚙️ Tetapan</h1>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <span onclick="showUserBadgePopup(this)" style="color:#666; font-size:13px; cursor:pointer; user-select:none; white-space:nowrap;" title="Tap to show full email">👤 <span id="userBadge"></span></span>
+            <a href="form.html" class="nav-btn">🏠 Home</a>
+        </div>
+    </div>
+    <p class="lede">Halaman ini untuk tetapan admin. Bahagian lain boleh ditambah di bawah kemudian.</p>
+
+    <!-- Tambah bahagian tetapan baru sebagai <section class="settings-section"> di dalam #settingsSections. -->
+    <div id="settingsSections">
+        <section class="settings-section" id="section-plots">
+            <h2>Plot</h2>
+            <p>Tambah plot baru, atau nyahaktifkan plot yang tidak digunakan. Plot yang dinyahaktif hilang dari borang siram, Dashboard dan entri Payroll baru. Rekod lama kekal dalam Rekod, CSV dan report. Tiada plot dipadam — anda boleh aktifkan semula di sini.</p>
+            <div id="plotBanner"></div>
+            <form id="addPlotForm" onsubmit="return submitNewPlot(event)">
+                <div class="add-row">
+                    <div>
+                        <label for="newPlotNursery">Lokasi</label>
+                        <select id="newPlotNursery">
+                            <option value="BNN">BNN</option>
+                            <option value="UNN1">UNN1</option>
+                            <option value="UNN2">UNN2</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="newPlotName">Nama plot</label>
+                        <input id="newPlotName" type="text" maxlength="20" placeholder="Contoh: B15" autocomplete="off">
+                    </div>
+                    <button id="addPlotBtn" class="btn-add" type="submit">Tambah plot</button>
+                </div>
+            </form>
+            <div id="plotLists"></div>
+        </section>
+    </div>
+</div>
+
+<div id="wlNav" style="display:none; margin-top: 30px; padding: 20px; border-top: 1px solid #ddd; text-align: center;"></div>
+
+<div id="logoutWrap" style="display:none; text-align: center; margin-top: 30px; padding-bottom: 20px;">
+    <hr style="border: 0; border-top: 1px solid #eee; width: 80%; margin: 20px auto;">
+    <button onclick="logout()" style="background: none; border: 1px solid #ccc; color: #070000; padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;">
+        Log Keluar
+    </button>
+</div>
+
+<script>
+    const currentUser = localStorage.getItem('loggedInUser');
+    if (!currentUser) {
+        window.location.href = 'index.html';
+    }
+
+    const supabaseUrl = 'https://kibqjztozokohqmhqqqf.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpYnFqenRvem9rb2hxbWhxcXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMzQzNjIsImV4cCI6MjA4OTgxMDM2Mn0.J7qJUZhWXYf5b9oey4wXJkjdi66jomEMw_NeV9NWF7M';
+    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    // Same session rule as the other pages: log out only when online AND the
+    // session is confirmed missing. A network error must not clear the login.
+    (async () => {
+        if (!currentUser) return;
+        if (!navigator.onLine) return;
+        try {
+            const { data: { session } = {}, error } = await _supabase.auth.getSession();
+            if (!session && !error) {
+                localStorage.removeItem('loggedInUser');
+                alert('Sesi tamat. Sila log masuk semula.');
+                window.location.href = 'index.html';
+            }
+        } catch (e) { /* getSession threw — leave the user alone */ }
+    })();
+
+    let userBadgePopupTimer = null;
+    function showUserBadgePopup(anchor) {
+        if (!currentUser) return;
+        closeUserBadgePopup();
+        const popup = document.createElement('div');
+        popup.id = 'userBadgePopup';
+        popup.textContent = currentUser;
+        popup.style.cssText = 'position:fixed; background:#333; color:white; padding:6px 10px; border-radius:6px; font-size:13px; white-space:nowrap; z-index:10000; box-shadow:0 2px 8px rgba(0,0,0,0.2);';
+        const rect = anchor.getBoundingClientRect();
+        popup.style.top = (rect.bottom + 5) + 'px';
+        popup.style.left = Math.max(8, Math.min(window.innerWidth - 250, rect.right - 200)) + 'px';
+        document.body.appendChild(popup);
+        userBadgePopupTimer = setTimeout(closeUserBadgePopup, 2500);
+        anchor.addEventListener('mouseleave', closeUserBadgePopup, { once: true });
+    }
+    function closeUserBadgePopup() {
+        const popup = document.getElementById('userBadgePopup');
+        if (popup) popup.remove();
+        if (userBadgePopupTimer) { clearTimeout(userBadgePopupTimer); userBadgePopupTimer = null; }
+    }
+
+    function esc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[ch]));
+    }
+
+    function setBanner(kind, text) {
+        const host = document.getElementById('plotBanner');
+        if (!text) { host.innerHTML = ''; return; }
+        host.innerHTML = '<div class="banner ' + kind + '">' + esc(text) + '</div>';
+    }
+
+    function editsAllowed() {
+        const status = getWateringPlotsStatus();
+        return status.tableReady && navigator.onLine;
+    }
+
+    function renderPlotSection() {
+        const status = getWateringPlotsStatus();
+        const allow = editsAllowed();
+        document.getElementById('addPlotBtn').disabled = !allow;
+        document.getElementById('newPlotNursery').disabled = !allow;
+        document.getElementById('newPlotName').disabled = !allow;
+
+        if (!status.tableReady) {
+            if (status.problem === 'offline') {
+                setBanner('warn', 'Perlu internet untuk mengubah plot. Senarai di bawah adalah simpanan telefon, atau senarai bawaan.');
+            } else if (status.problem === 'missing') {
+                setBanner('warn', 'Jadual plot belum dipasang dalam Supabase. Jalankan fail SQL dahulu, kemudian muat semula. Sementara itu senarai bawaan masih digunakan.');
+            } else {
+                setBanner('warn', 'Tidak dapat membaca jadual plot. Semak internet dan muat semula. Senarai bawaan atau simpanan telefon masih digunakan.');
+            }
+        }
+
+        const records = getWateringPlotRecords();
+        const lists = document.getElementById('plotLists');
+        lists.innerHTML = WATERING_NURSERIES.map((nursery) => {
+            const rows = records.filter((row) => row.nursery === nursery);
+            const activeCount = rows.filter((row) => row.active).length;
+            const hiddenCount = rows.length - activeCount;
+            const countLabel = activeCount + ' aktif' + (hiddenCount ? ' · ' + hiddenCount + ' nyahaktif' : '');
+            const body = rows.map((row) => {
+                const action = row.active
+                    ? '<button type="button" class="btn-hide" data-action="hide" data-plot="' + esc(row.plot_name) + '"' + (allow ? '' : ' disabled') + '>Nyahaktifkan</button>'
+                    : '<button type="button" class="btn-restore" data-action="restore" data-plot="' + esc(row.plot_name) + '"' + (allow ? '' : ' disabled') + '>Aktifkan semula</button>';
+                return '<tr class="' + (row.active ? '' : 'inactive') + '">' +
+                    '<td><strong>' + esc(row.plot_name) + '</strong></td>' +
+                    '<td><span class="badge ' + (row.active ? 'on' : 'off') + '">' + (row.active ? 'Aktif' : 'Nyahaktif') + '</span></td>' +
+                    '<td>' + action + '</td></tr>';
+            }).join('');
+            return '<div class="nursery-block"><h3>' + esc(nursery) + ' · ' + esc(countLabel) + '</h3>' +
+                '<table class="plot-table"><thead><tr><th>Plot</th><th>Status</th><th></th></tr></thead><tbody>' +
+                body + '</tbody></table></div>';
+        }).join('');
+    }
+
+    function normalizePlotName(raw) {
+        return String(raw || '').trim().toUpperCase();
+    }
+
+    function validateNewPlot(nursery, name) {
+        if (!WATERING_NURSERIES.includes(nursery)) return 'Sila pilih lokasi.';
+        if (!name) return 'Sila isi nama plot.';
+        if (RESERVED_PLOT_NAMES[name]) return 'Nama ini dikhaskan untuk lokasi (BNN, UNN1, UNN2). Pilih nama plot lain.';
+        if (!/^[A-Z0-9][A-Z0-9_-]{0,19}$/.test(name)) return 'Nama plot: huruf, nombor, - dan _ sahaja. Contoh: B15.';
+        const existing = getWateringPlotRecords().find((row) => row.plot_name === name);
+        if (existing && existing.active) return 'Plot ' + name + ' sudah ada di ' + existing.nursery + '.';
+        if (existing && !existing.active) return 'Plot ' + name + ' dinyahaktifkan. Tekan Aktifkan semula pada senarai di bawah.';
+        return '';
+    }
+
+    async function submitNewPlot(event) {
+        event.preventDefault();
+        if (!editsAllowed()) return false;
+        const nursery = document.getElementById('newPlotNursery').value;
+        const name = normalizePlotName(document.getElementById('newPlotName').value);
+        const problem = validateNewPlot(nursery, name);
+        if (problem) { setBanner('err', problem); return false; }
+
+        const siblings = getWateringPlotRecords().filter((row) => row.nursery === nursery);
+        const sortOrder = siblings.reduce((max, row) => Math.max(max, Number(row.sort_order) || 0), 0) + 1;
+        const btn = document.getElementById('addPlotBtn');
+        btn.disabled = true;
+        const { error } = await _supabase.from('watering_plots').upsert({
+            plot_name: name,
+            nursery: nursery,
+            active: true,
+            sort_order: sortOrder,
+            updated_at: new Date().toISOString(),
+            updated_by: currentUser
+        }, { onConflict: 'plot_name' });
+        btn.disabled = false;
+        if (error) {
+            console.error('add plot:', error);
+            setBanner('err', 'Gagal menambah plot. ' + (error.message || 'Cuba lagi.'));
+            return false;
+        }
+        document.getElementById('newPlotName').value = '';
+        await loadWateringPlots(_supabase);
+        setBanner('ok', 'Plot ' + name + ' ditambah di ' + nursery + '. Ia akan muncul dalam borang, Dashboard, Rekod dan Payroll.');
+        renderPlotSection();
+        return false;
+    }
+
+    async function setPlotActive(plotName, active) {
+        if (!editsAllowed()) return;
+        const row = getWateringPlotRecords().find((item) => item.plot_name === plotName);
+        if (!row) return;
+        const question = active
+            ? 'Aktifkan semula plot ' + row.plot_name + ' (' + row.nursery + ')?\n\nPlot ini akan muncul semula dalam borang siram, Dashboard dan Payroll.'
+            : 'Nyahaktifkan plot ' + row.plot_name + ' (' + row.nursery + ')?\n\nPlot ini akan hilang dari borang siram, Dashboard dan entri Payroll baru.\nRekod lama kekal dalam Rekod, CSV dan report.\nAnda boleh aktifkan semula dari halaman ini.';
+        if (!confirm(question)) return;
+
+        const { error } = await _supabase.from('watering_plots').upsert({
+            plot_name: row.plot_name,
+            nursery: row.nursery,
+            active: active,
+            sort_order: row.sort_order,
+            updated_at: new Date().toISOString(),
+            updated_by: currentUser
+        }, { onConflict: 'plot_name' });
+        if (error) {
+            console.error('update plot:', error);
+            setBanner('err', 'Gagal menyimpan. ' + (error.message || 'Cuba lagi.'));
+            return;
+        }
+        await loadWateringPlots(_supabase);
+        setBanner('ok', active
+            ? 'Plot ' + row.plot_name + ' diaktifkan semula.'
+            : 'Plot ' + row.plot_name + ' dinyahaktifkan. Rekod lama tidak dipadam.');
+        renderPlotSection();
+    }
+
+    document.getElementById('plotLists').addEventListener('click', (event) => {
+        const btn = event.target.closest('button[data-action]');
+        if (!btn || btn.disabled) return;
+        const name = btn.getAttribute('data-plot');
+        if (btn.getAttribute('data-action') === 'hide') setPlotActive(name, false);
+        if (btn.getAttribute('data-action') === 'restore') setPlotActive(name, true);
+    });
+
+    // Same admin check as Payroll: watering_admins for this email.
+    // A network error leaves the page on the loading line — it does not
+    // treat the person as an admin, and it does not send a real admin away.
+    async function verifyAdminAccess() {
+        try {
+            const { data, error } = await _supabase
+                .from('watering_admins').select('email').eq('email', currentUser).maybeSingle();
+            if (error) {
+                console.error('verifyAdminAccess:', error);
+                document.getElementById('loadingState').textContent = 'Tidak dapat sahkan admin. Semak internet dan muat semula.';
+                return;
+            }
+            if (!data) {
+                window.location.href = 'dashboard.html';
+                return;
+            }
+
+            document.getElementById('loadingState').style.display = 'none';
+            document.getElementById('content').style.display = '';
+            document.getElementById('logoutWrap').style.display = '';
+            document.getElementById('userBadge').textContent = currentUser.split('@')[0];
+            renderWateringNav('settings');
+            await loadWateringPlots(_supabase);
+            renderPlotSection();
+        } catch (e) {
+            console.error('verifyAdminAccess threw:', e);
+            document.getElementById('loadingState').textContent = 'Tidak dapat sahkan admin. Semak internet dan muat semula.';
+        }
+    }
+
+    async function logout() {
+        try {
+            const db = new Dexie('SiramGoDB');
+            db.version(1).stores({ pending_queue: '++id, plot_name, timestamp' });
+            const count = await db.pending_queue.count();
+            if (count > 0) {
+                if (!confirm('You have ' + count + ' records not uploaded. Logout anyway?')) return;
+            }
+        } catch (e) { /* Dexie unavailable — still allow logout */ }
+        try { await _supabase.auth.signOut(); } catch (e) { /* offline OK */ }
+        localStorage.removeItem('loggedInUser');
+        window.location.href = 'index.html';
+    }
+
+    window.onload = verifyAdminAccess;
+</script>
+
+</body>
+</html>
