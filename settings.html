@@ -315,6 +315,12 @@
             document.getElementById('logoutWrap').style.display = '';
             document.getElementById('userBadge').textContent = currentUser.split('@')[0];
             renderWateringNav('settings');
+            if (typeof onWateringPlotsUpdated === 'function') {
+                onWateringPlotsUpdated(() => {
+                    if (document.getElementById('content').style.display === 'none') return;
+                    renderPlotSection();
+                });
+            }
             await loadWateringPlots(_supabase);
             renderPlotSection();
         } catch (e) {

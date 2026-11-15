@@ -272,7 +272,29 @@ function closeUserBadgePopup() {
     }
 }
 
-// Keep a plot the worker already picked if it is still in the new list.
+function showPlotRemovedNote(selectEl, plotName, stillWatering) {
+    if (!selectEl || !plotName) return;
+    const noteId = selectEl.id + 'RemovedNote';
+    let note = document.getElementById(noteId);
+    if (!note) {
+        note = document.createElement('div');
+        note.id = noteId;
+        note.style.cssText = 'color:#856404; background:#fff3cd; padding:8px 10px; border-radius:6px; font-size:13px; margin:0 0 12px;';
+        selectEl.insertAdjacentElement('afterend', note);
+    }
+    note.textContent = stillWatering
+        ? ('Plot ' + plotName + ' sudah dibuang. Selesaikan siraman yang sedang berjalan, kemudian pilih plot lain.')
+        : ('Plot ' + plotName + ' sudah dibuang. Sila pilih plot lain.');
+}
+
+function clearPlotRemovedNote(selectId) {
+    const note = document.getElementById(selectId + 'RemovedNote');
+    if (note) note.remove();
+}
+
+// Keep a plot the worker already picked when it is still in the list.
+// A plot removed while this form is open is cleared, with a short note.
+// An in-progress watering timer for that plot is left alone so they can finish.
 function resyncOpenPlotDropdowns() {
     const pairs = [
         ['locationSelect', 'plotSelect', false],
@@ -283,9 +305,14 @@ function resyncOpenPlotDropdowns() {
         const plot = document.getElementById(plotId);
         if (!loc || !plot || !loc.value) return;
         const previous = plot.value;
-        syncPlotOptions(locId, plotId, includeAll);
-        if (previous && Array.from(plot.options).some((opt) => opt.value === previous)) {
+        fillPlotOptions(locId, plotId, includeAll);
+        const stillThere = previous && Array.from(plot.options).some((opt) => opt.value === previous);
+        if (stillThere) {
             plot.value = previous;
+            clearPlotRemovedNote(plotId);
+        } else if (previous) {
+            plot.value = '';
+            showPlotRemovedNote(plot, previous, !!(activeTimers && activeTimers[previous]));
         }
     });
     const adminLoc = document.getElementById('adminLokasi');
@@ -293,9 +320,9 @@ function resyncOpenPlotDropdowns() {
     if (adminLoc && adminPlot && adminLoc.value) {
         const previous = adminPlot.value;
         adminSyncPlots();
-        if (previous && Array.from(adminPlot.options).some((opt) => opt.value === previous)) {
-            adminPlot.value = previous;
-        }
+        const stillThere = previous && Array.from(adminPlot.options).some((opt) => opt.value === previous);
+        if (stillThere) adminPlot.value = previous;
+        else if (previous) adminPlot.value = '';
     }
 }
 
@@ -303,6 +330,7 @@ function resyncOpenPlotDropdowns() {
 window.onload = async function() {
     displayUserBadge();
     checkAdminAndShowPayrollButton();
+    if (typeof onWateringPlotsUpdated === 'function') onWateringPlotsUpdated(resyncOpenPlotDropdowns);
     if (typeof loadWateringPlots === 'function') {
         try {
             await loadWateringPlots(_supabase);
@@ -358,9 +386,12 @@ function showHistoryTab(loc) {
 }
 
 // --- DROPDOWN LOGIC ---
-function syncPlotOptions(locId, plotId, includeAll) {
-    const locValue = document.getElementById(locId).value;
+function fillPlotOptions(locId, plotId, includeAll) {
+    const locEl = document.getElementById(locId);
     const plotDropdown = document.getElementById(plotId);
+    if (!locEl || !plotDropdown) return;
+    const locValue = locEl.value;
+    const previous = plotDropdown.value;
     plotDropdown.innerHTML = '<option value="">-- Pilih Plot --</option>';
     if (locValue && plotData[locValue]) {
         if (includeAll) {
@@ -378,6 +409,19 @@ function syncPlotOptions(locId, plotId, includeAll) {
             plotDropdown.add(option);
         });
     }
+    if (previous && Array.from(plotDropdown.options).some((opt) => opt.value === previous)) {
+        plotDropdown.value = previous;
+    }
+}
+
+// Refresh from watering_plots before the plot list is shown, then fill.
+// A fetch that just started is reused. Offline keeps the cached list.
+async function syncPlotOptions(locId, plotId, includeAll) {
+    fillPlotOptions(locId, plotId, includeAll);
+    if (typeof loadWateringPlots === 'function') {
+        try { await loadWateringPlots(_supabase); } catch (e) { /* cached list stays */ }
+    }
+    fillPlotOptions(locId, plotId, includeAll);
 }
 
 // --- IMAGE COMPRESSION ---

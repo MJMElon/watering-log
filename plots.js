@@ -40,6 +40,10 @@ let plotRecordList = builtinPlotRecords();
 let wateringPlotsStatus = { tableReady: false, source: 'builtin', problem: null };
 let plotsLoadInflight = null;
 let plotsReadWarned = false;
+let foregroundClient = null;
+let foregroundWatchStarted = false;
+let foregroundRefreshTimer = null;
+const plotUpdateListeners = [];
 
 function builtinPlotRecords() {
     const rows = [];
@@ -162,14 +166,56 @@ function isPlotActive(plotName) {
     return WATERING_NURSERIES.some((nursery) => (plotData[nursery] || []).indexOf(name) !== -1);
 }
 
-// Reads watering_plots when online. On any failure the built-in list (or the
-// last good cache) stays in place — a missing table must not blank the form.
+// Pages register to rebuild dropdowns after a fetch. Not tied to login.
+function onWateringPlotsUpdated(fn) {
+    if (typeof fn === 'function') plotUpdateListeners.push(fn);
+}
+
+function notifyWateringPlotsUpdated() {
+    plotUpdateListeners.forEach((fn) => {
+        try { fn(); } catch (e) { console.warn('plot listener', e); }
+    });
+}
+
+// Refetch when the page is shown again: reopen from the home screen,
+// switch back to the app, or restore from the back-forward cache.
+// A burst of visibility + focus + pageshow is one request.
+function ensureForegroundPlotRefresh() {
+    if (foregroundWatchStarted || typeof document === 'undefined' || typeof window === 'undefined') return;
+    foregroundWatchStarted = true;
+    const kick = () => {
+        if (document.visibilityState === 'hidden') return;
+        clearTimeout(foregroundRefreshTimer);
+        foregroundRefreshTimer = setTimeout(() => {
+            loadWateringPlots(foregroundClient);
+        }, 50);
+    };
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') kick();
+    });
+    window.addEventListener('focus', kick);
+    window.addEventListener('pageshow', kick);
+}
+
+// Reads watering_plots whenever a page asks, including page load and when
+// the app returns to the foreground. The local cache is only the fallback
+// when the phone is offline or the request fails. This does not check who
+// is logged in — the existing session is enough.
 async function loadWateringPlots(client) {
-    if (plotsLoadInflight) return plotsLoadInflight;
-    plotsLoadInflight = loadWateringPlotsNow(client).finally(() => {
+    if (client) foregroundClient = client;
+    ensureForegroundPlotRefresh();
+    if (plotsLoadInflight) {
+        const status = await plotsLoadInflight;
+        return status;
+    }
+    plotsLoadInflight = loadWateringPlotsNow(foregroundClient).finally(() => {
         plotsLoadInflight = null;
     });
-    return plotsLoadInflight;
+    try {
+        return await plotsLoadInflight;
+    } finally {
+        notifyWateringPlotsUpdated();
+    }
 }
 
 async function loadWateringPlotsNow(client) {

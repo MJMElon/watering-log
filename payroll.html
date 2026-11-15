@@ -520,10 +520,19 @@
         }
     }
 
+    let payrollLoading = false;
+    let seenActivePlotSig = '';
+
+    function activePlotSig() {
+        return ['BNN', 'UNN1', 'UNN2'].map((area) => (plotData[area] || []).join(',')).join('|');
+    }
+
     async function loadMonth() {
         const monthValue = document.getElementById('monthPicker').value;
         if (!monthValue) return;
+        payrollLoading = true;
         document.getElementById('saveBtn').disabled = true;
+        try {
         if (typeof loadWateringPlots === 'function') {
             try { await loadWateringPlots(_supabase); } catch (e) { /* built-in list */ }
         }
@@ -578,7 +587,21 @@
         renderInputSection();
         renderSnapshotStatus();
         await refreshSnapshotsList();
-        document.getElementById('saveBtn').disabled = false;
+        } finally {
+            seenActivePlotSig = activePlotSig();
+            payrollLoading = false;
+            const saveBtn = document.getElementById('saveBtn');
+            if (saveBtn) saveBtn.disabled = false;
+        }
+    }
+
+    if (typeof onWateringPlotsUpdated === 'function') {
+        onWateringPlotsUpdated(() => {
+            const sig = activePlotSig();
+            if (sig === seenActivePlotSig || payrollLoading) return;
+            seenActivePlotSig = sig;
+            loadMonth();
+        });
     }
 
     async function fetchCurrentInputs() {

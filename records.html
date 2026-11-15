@@ -304,12 +304,16 @@
     function syncPlots() {
         const loc = document.getElementById('locSelect').value;
         const plotDropdown = document.getElementById('plotSelect');
+        const previous = plotDropdown.value;
         plotDropdown.innerHTML = '<option value="ALL">Semua</option>';
         if (loc !== "ALL") {
             const active = new Set(plotData[loc] || []);
             knownPlots(loc).forEach(p => {
                 plotDropdown.add(new Option(active.has(p) ? p : (p + ' (nyahaktif)'), p));
             });
+            if (previous && Array.from(plotDropdown.options).some(o => o.value === previous)) {
+                plotDropdown.value = previous;
+            }
         }
         runFilter();
     }
@@ -790,6 +794,12 @@
     window.onload = async () => {
         const badge = document.getElementById('userBadge');
         if (badge && currentUser) badge.textContent = currentUser.split('@')[0];
+        if (typeof onWateringPlotsUpdated === 'function') {
+            onWateringPlotsUpdated(() => {
+                const loc = document.getElementById('locSelect');
+                if (loc && loc.value && loc.value !== 'ALL') syncPlots();
+            });
+        }
         if (typeof loadWateringPlots === 'function') {
             try { await loadWateringPlots(_supabase); } catch (e) { /* built-in list */ }
         }
