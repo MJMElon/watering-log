@@ -384,6 +384,7 @@
     let sessionsByPlot = {};
     let rainingDaysByPlot = {};
     let seedlingsByPlot = {};
+    let payrollPlotsByArea = { BNN: [], UNN1: [], UNN2: [] };
     let targetsByPlot = {};
     let operatorsByArea = {};
     let currentRate = null; // null = not loaded yet (avoids first-flush overwriting DB)
@@ -519,10 +520,22 @@
         }
     }
 
+    let payrollLoading = false;
+    let seenActivePlotSig = '';
+
+    function activePlotSig() {
+        return ['BNN', 'UNN1', 'UNN2'].map((area) => (plotData[area] || []).join(',')).join('|');
+    }
+
     async function loadMonth() {
         const monthValue = document.getElementById('monthPicker').value;
         if (!monthValue) return;
+        payrollLoading = true;
         document.getElementById('saveBtn').disabled = true;
+        try {
+        if (typeof loadWateringPlots === 'function') {
+            try { await loadWateringPlots(_supabase); } catch (e) { /* built-in list */ }
+        }
 
         // Flush any unsaved in-memory inputs to DB before fetching the new month
         await saveAllInputsToDB();
@@ -536,15 +549,25 @@
         sessionsByPlot = sessionsResult.sessions || {};
         rainingDaysByPlot = sessionsResult.rainingDays || {};
         currentSnapshot = snapshotResult;
+        // Active plots always. A removed plot stays on this month only when
+        // the month has a watering record for it, or the saved claim for
+        // this month already includes it. A new month with neither does not
+        // show it. Bibit already stored for the plot is filled in below.
+        payrollPlotsByArea = plotsForPayrollMonth(sessionsResult.recordedPlots || {});
 
         seedlingsByPlot = {};
         targetsByPlot = {};
-        for (const plot in PLOT_SEEDLINGS) {
-            seedlingsByPlot[plot] = (inputs.seedlings[plot] != null)
-                ? inputs.seedlings[plot]
-                : (PLOT_SEEDLINGS[plot] || 0);
-            targetsByPlot[plot] = inputs.targets[plot] || 0;
-        }
+        ['BNN', 'UNN1', 'UNN2'].forEach((area) => {
+            (payrollPlotsByArea[area] || []).forEach((plot) => {
+                const saved = snapshotPlotEntry(plot);
+                seedlingsByPlot[plot] = (inputs.seedlings[plot] != null)
+                    ? inputs.seedlings[plot]
+                    : (saved && saved.seedlings != null ? saved.seedlings : (PLOT_SEEDLINGS[plot] || 0));
+                targetsByPlot[plot] = (inputs.targets[plot] != null)
+                    ? inputs.targets[plot]
+                    : (saved && saved.target_per_day != null ? saved.target_per_day : 0);
+            });
+        });
         operatorsByArea = {};
         for (const area in AREA_OPERATORS) {
             operatorsByArea[area] = inputs.operators[area] || AREA_OPERATORS[area] || '';
@@ -564,7 +587,21 @@
         renderInputSection();
         renderSnapshotStatus();
         await refreshSnapshotsList();
-        document.getElementById('saveBtn').disabled = false;
+        } finally {
+            seenActivePlotSig = activePlotSig();
+            payrollLoading = false;
+            const saveBtn = document.getElementById('saveBtn');
+            if (saveBtn) saveBtn.disabled = false;
+        }
+    }
+
+    if (typeof onWateringPlotsUpdated === 'function') {
+        onWateringPlotsUpdated(() => {
+            const sig = activePlotSig();
+            if (sig === seenActivePlotSig || payrollLoading) return;
+            seenActivePlotSig = sig;
+            loadMonth();
+        });
     }
 
     async function fetchCurrentInputs() {
@@ -617,7 +654,7 @@
                 .lt('end_time', bounds.lt)
                 .order('id', { ascending: true })
                 .range(from, from + PAGE - 1);
-            if (error) { console.error('fetchSessionsForMonth:', error); return { sessions: {}, rainingDays: {} }; }
+            if (error) { console.error('fetchSessionsForMonth:', error); return { sessions: {}, rainingDays: {}, recordedPlots: {} }; }
             allRows = allRows.concat(data || []);
             if (!data || data.length < PAGE) break;
             from += PAGE;
@@ -625,6 +662,12 @@
 
         const sessions = {};
         const rainingDateSets = {}; // { plot: Set of 'YYYY-MM-DD' strings }
+        const recordedPlots = {};
+        for (const r of allRows) {
+            // Direct plot rows only. An area-wide "Semua BNN" row is not a
+            // record for each removed plot.
+            if (r.plot_name && !isNurseryCode(r.plot_name)) recordedPlots[r.plot_name] = true;
+        }
         for (const r of allRows) {
             // Raining day: any record with issue_reason = 'Hujan', dedupe by date per plot.
             // If plot_name is an area code (e.g. 'BNN'), expand to every plot in that area.
@@ -647,7 +690,37 @@
         const rainingDays = {};
         for (const plot in rainingDateSets) rainingDays[plot] = rainingDateSets[plot].size;
 
-        return { sessions, rainingDays };
+        return { sessions, rainingDays, recordedPlots };
+    }
+
+    function isNurseryCode(name) {
+        if (plotData[name]) return true;
+        return typeof allPlotData !== 'undefined' && allPlotData && !!allPlotData[name];
+    }
+
+    function snapshotPlotEntry(plot) {
+        const areas = currentSnapshot && currentSnapshot.snapshot_data && currentSnapshot.snapshot_data.areas;
+        if (!areas) return null;
+        for (const code of ['BNN', 'UNN1', 'UNN2']) {
+            const entry = areas[code] && areas[code].plots && areas[code].plots[plot];
+            if (entry) return entry;
+        }
+        return null;
+    }
+
+    // Active plots, plus a removed plot that this month still owes a row:
+    // a watering_logs row in the month, or a place in this month's saved claim.
+    function plotsForPayrollMonth(recordedPlots) {
+        const next = { BNN: [], UNN1: [], UNN2: [] };
+        ['BNN', 'UNN1', 'UNN2'].forEach((area) => {
+            const known = (typeof allPlotData !== 'undefined' && allPlotData[area] && allPlotData[area].length)
+                ? allPlotData[area]
+                : (plotData[area] || []);
+            const active = {};
+            (plotData[area] || []).forEach((plot) => { active[plot] = true; });
+            next[area] = known.filter((plot) => active[plot] || recordedPlots[plot] || snapshotPlotEntry(plot));
+        });
+        return next;
     }
 
     async function fetchSnapshotForMonth(monthValue) {
@@ -680,7 +753,7 @@
         let nextTabIdx = 1;
 
         const sections = areas.map(area => {
-            const plots = plotData[area] || [];
+            const plots = payrollPlotsByArea[area] || [];
             const operator = operatorsByArea[area] || '';
             const withSessions = plots.filter(p => (sessionsByPlot[p] || 0) > 0).length;
             const bibitTotal = plots.reduce((sum, p) => sum + (seedlingsByPlot[p] || 0), 0);
@@ -749,15 +822,19 @@
     const operatorSaveTimers = {};
 
     function areaOfPlot(plot) {
-        for (const area in plotData) {
-            if ((plotData[area] || []).includes(plot)) return area;
+        for (const area of ['BNN', 'UNN1', 'UNN2']) {
+            if ((payrollPlotsByArea[area] || []).includes(plot)) return area;
+        }
+        const book = (typeof allPlotData !== 'undefined' && allPlotData) ? allPlotData : plotData;
+        for (const area of ['BNN', 'UNN1', 'UNN2']) {
+            if ((book[area] || []).includes(plot)) return area;
         }
         return null;
     }
 
     function updateBibitTotal(area) {
         if (!area) return;
-        const total = (plotData[area] || []).reduce((sum, p) => sum + (seedlingsByPlot[p] || 0), 0);
+        const total = (payrollPlotsByArea[area] || []).reduce((sum, p) => sum + (seedlingsByPlot[p] || 0), 0);
         const foot = document.getElementById('bibitTotal-' + area);
         if (foot) foot.textContent = fmtNumber(total);
         const head = document.getElementById('bibitTotalHead-' + area);
@@ -956,7 +1033,7 @@
         const rate = (currentRate != null && !isNaN(currentRate)) ? currentRate : PAYROLL_RATE;
 
         for (const areaCode of ['BNN', 'UNN1', 'UNN2']) {
-            const plotsIn = plotData[areaCode] || [];
+            const plotsIn = payrollPlotsByArea[areaCode] || [];
             const plotsOut = {};
             let totalUnit = 0;
             for (const plot of plotsIn) {

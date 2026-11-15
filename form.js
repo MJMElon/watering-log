@@ -272,10 +272,71 @@ function closeUserBadgePopup() {
     }
 }
 
+function showPlotRemovedNote(selectEl, plotName, stillWatering) {
+    if (!selectEl || !plotName) return;
+    const noteId = selectEl.id + 'RemovedNote';
+    let note = document.getElementById(noteId);
+    if (!note) {
+        note = document.createElement('div');
+        note.id = noteId;
+        note.style.cssText = 'color:#856404; background:#fff3cd; padding:8px 10px; border-radius:6px; font-size:13px; margin:0 0 12px;';
+        selectEl.insertAdjacentElement('afterend', note);
+    }
+    note.textContent = stillWatering
+        ? ('Plot ' + plotName + ' sudah dibuang. Selesaikan siraman yang sedang berjalan, kemudian pilih plot lain.')
+        : ('Plot ' + plotName + ' sudah dibuang. Sila pilih plot lain.');
+}
+
+function clearPlotRemovedNote(selectId) {
+    const note = document.getElementById(selectId + 'RemovedNote');
+    if (note) note.remove();
+}
+
+// Keep a plot the worker already picked when it is still in the list.
+// A plot removed while this form is open is cleared, with a short note.
+// An in-progress watering timer for that plot is left alone so they can finish.
+function resyncOpenPlotDropdowns() {
+    const pairs = [
+        ['locationSelect', 'plotSelect', false],
+        ['issueLocationSelect', 'issuePlotSelect', true]
+    ];
+    pairs.forEach(([locId, plotId, includeAll]) => {
+        const loc = document.getElementById(locId);
+        const plot = document.getElementById(plotId);
+        if (!loc || !plot || !loc.value) return;
+        const previous = plot.value;
+        fillPlotOptions(locId, plotId, includeAll);
+        const stillThere = previous && Array.from(plot.options).some((opt) => opt.value === previous);
+        if (stillThere) {
+            plot.value = previous;
+            clearPlotRemovedNote(plotId);
+        } else if (previous) {
+            plot.value = '';
+            showPlotRemovedNote(plot, previous, !!(activeTimers && activeTimers[previous]));
+        }
+    });
+    const adminLoc = document.getElementById('adminLokasi');
+    const adminPlot = document.getElementById('adminPlot');
+    if (adminLoc && adminPlot && adminLoc.value) {
+        const previous = adminPlot.value;
+        adminSyncPlots();
+        const stillThere = previous && Array.from(adminPlot.options).some((opt) => opt.value === previous);
+        if (stillThere) adminPlot.value = previous;
+        else if (previous) adminPlot.value = '';
+    }
+}
+
 // --- UPDATED ONLOAD (With Migration) ---
 window.onload = async function() {
     displayUserBadge();
     checkAdminAndShowPayrollButton();
+    if (typeof onWateringPlotsUpdated === 'function') onWateringPlotsUpdated(resyncOpenPlotDropdowns);
+    if (typeof loadWateringPlots === 'function') {
+        try {
+            await loadWateringPlots(_supabase);
+            resyncOpenPlotDropdowns();
+        } catch (e) { /* built-in list stays in plotData */ }
+    }
 
     const saved = localStorage.getItem('activeWateringSessions');
     if (saved) {
@@ -325,9 +386,12 @@ function showHistoryTab(loc) {
 }
 
 // --- DROPDOWN LOGIC ---
-function syncPlotOptions(locId, plotId, includeAll) {
-    const locValue = document.getElementById(locId).value;
+function fillPlotOptions(locId, plotId, includeAll) {
+    const locEl = document.getElementById(locId);
     const plotDropdown = document.getElementById(plotId);
+    if (!locEl || !plotDropdown) return;
+    const locValue = locEl.value;
+    const previous = plotDropdown.value;
     plotDropdown.innerHTML = '<option value="">-- Pilih Plot --</option>';
     if (locValue && plotData[locValue]) {
         if (includeAll) {
@@ -345,6 +409,19 @@ function syncPlotOptions(locId, plotId, includeAll) {
             plotDropdown.add(option);
         });
     }
+    if (previous && Array.from(plotDropdown.options).some((opt) => opt.value === previous)) {
+        plotDropdown.value = previous;
+    }
+}
+
+// Refresh from watering_plots before the plot list is shown, then fill.
+// A fetch that just started is reused. Offline keeps the cached list.
+async function syncPlotOptions(locId, plotId, includeAll) {
+    fillPlotOptions(locId, plotId, includeAll);
+    if (typeof loadWateringPlots === 'function') {
+        try { await loadWateringPlots(_supabase); } catch (e) { /* cached list stays */ }
+    }
+    fillPlotOptions(locId, plotId, includeAll);
 }
 
 // --- IMAGE COMPRESSION ---
@@ -614,12 +691,23 @@ async function fetchLatestRecords() {
     let totalMinutes = 0;
 
     for (const [tabId, prefix] of Object.entries(locMap)) {
-        const { data, error } = await _supabase
+        // Prefix still covers the original names (B*, U*, N*). A plot whose
+        // name does not start with that letter is added explicitly so it
+        // still shows under its nursery. Hidden plots stay in this history.
+        const known = (typeof allPlotData !== 'undefined' && allPlotData[tabId]) ? allPlotData[tabId] : [];
+        const extras = known.filter((name) => String(name).toUpperCase().indexOf(prefix.toUpperCase()) !== 0);
+        let query = _supabase
             .from('watering_logs')
             .select('*')
-            .ilike('plot_name', `${prefix}%`) // This is the fix: prefix (B, U, N)
             .order('end_time', { ascending: false })
             .limit(10);
+        if (extras.length) {
+            const list = extras.map((name) => '"' + String(name).replace(/"/g, '') + '"').join(',');
+            query = query.or('plot_name.ilike.' + prefix + '%,plot_name.in.(' + list + ')');
+        } else {
+            query = query.ilike('plot_name', prefix + '%');
+        }
+        const { data, error } = await query;
 
         if (error) {
             console.error(`Supabase Error for ${tabId}:`, error);
@@ -679,7 +767,15 @@ async function logout() {
     window.location.href = "index.html";
 }
 
-window.addEventListener('online', syncOfflineData);
+window.addEventListener('online', async () => {
+    if (typeof loadWateringPlots === 'function') {
+        try {
+            await loadWateringPlots(_supabase);
+            resyncOpenPlotDropdowns();
+        } catch (e) { /* keep the list already on screen */ }
+    }
+    syncOfflineData();
+});
 setInterval(async () => {
     if (!navigator.onLine) return;
     const count = await db.pending_queue.count();

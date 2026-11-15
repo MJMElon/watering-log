@@ -70,7 +70,7 @@
                         <option value="UNN2">UNN2</option>
                     </select>
                     <label style="display: block; font-weight: bold; margin-bottom: 5px;">Plot No:</label>
-                    <select id="plotSelect" style="width: 100%; padding: 12px; margin-bottom: 20px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; background: white;">
+                    <select id="plotSelect" onpointerdown="syncPlotOptions('locationSelect', 'plotSelect')" style="width: 100%; padding: 12px; margin-bottom: 20px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; background: white;">
                         <option value="">-- Sila Pilih Lokasi Dulu --</option>
                     </select>
                     <button class="start-btn" onclick="triggerStartCamera()" style="width:100%; background:#28a745; color:white; padding: 16px; border:none; border-radius:8px; font-weight:bold; font-size:18px;">📸 START WATERING</button>
@@ -89,7 +89,7 @@
                         <option value="UNN2">UNN2</option>
                     </select>
                     <label style="display: block; font-weight: bold; margin-bottom: 5px;">Plot No:</label>
-                    <select id="issuePlotSelect" style="width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; background: white;">
+                    <select id="issuePlotSelect" onpointerdown="syncPlotOptions('issueLocationSelect', 'issuePlotSelect', true)" style="width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; background: white;">
                         <option value="">-- Sila Pilih Lokasi Dulu --</option>
                     </select>
                     <label style="display: block; font-weight: bold; margin-bottom: 5px;">Sebab:</label>
